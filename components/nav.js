@@ -11,45 +11,22 @@ const links = [
 
 const Nav = () => (
   <nav>
-    <ul>
+    <ul className='flex justify-between items-center p-8'>
       <li>
         <Link href='/'>
-          <a>Home</a>
+          <a className='text-blue-500 no-underline'>Home</a>
         </Link>
       </li>
-      {links.map(({ key, href, label }) => (
-        <li key={key}>
-          <a href={href}>{label}</a>
-        </li>
-      ))}
+      <ul className='flex justify-between items-center'>
+        {links.map(({ href, label }) => (
+          <li key={`${href}${label}`} className='ml-4'>
+            <a href={href} className='btn-blue no-underline'>
+              {label}
+            </a>
+          </li>
+        ))}
+      </ul>
     </ul>
-
-    <style jsx>{`
-      :global(body) {
-        margin: 0;
-        font-family: -apple-system, BlinkMacSystemFont, Avenir Next, Avenir,
-          Helvetica, sans-serif;
-      }
-      nav {
-        text-align: center;
-      }
-      ul {
-        display: flex;
-        justify-content: space-between;
-      }
-      nav > ul {
-        padding: 4px 16px;
-      }
-      li {
-        display: flex;
-        padding: 6px 8px;
-      }
-      a {
-        color: #067df7;
-        text-decoration: none;
-        font-size: 13px;
-      }
-    `}</style>
   </nav>
 )
 
