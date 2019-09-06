@@ -1,91 +1,114 @@
-import React from 'react'
-import Link from 'next/link'
+import React, { Component } from 'react'
+import getDirections from '../lib/google-maps/directions'
 import Head from 'next/head'
+
 import Nav from '../components/nav'
 
-const Home = () => (
-  <div>
-    <Head>
-      <title>Home</title>
-    </Head>
 
-    <Nav />
+const getNumbers = (leg) => {
+  const { duration, duration_in_traffic } = leg
 
-    <div className='hero'>
-      <h1 className='title'>Welcome to Next.js!</h1>
-      <p className='description'>
-        To get started, edit <code>pages/index.js</code> and save to reload.
-      </p>
+  const delayInSeconds = (duration_in_traffic.value - duration.value)
+  const delayInMinutes = Math.round(delayInSeconds / 60)
 
-      <div className='row'>
-        <Link href='https://github.com/zeit/next.js#setup'>
-          <a className='card'>
-            <h3>Getting Started &rarr;</h3>
-            <p>Learn more about Next.js on GitHub and in their examples.</p>
-          </a>
-        </Link>
-        <Link href='https://github.com/zeit/next.js/tree/master/examples'>
-          <a className='card'>
-            <h3>Examples &rarr;</h3>
-            <p>Find other example boilerplates on the Next.js GitHub.</p>
-          </a>
-        </Link>
-        <Link href='https://github.com/zeit/next.js'>
-          <a className='card'>
-            <h3>Create Next App &rarr;</h3>
-            <p>Was this tool helpful? Let us know how we can improve it!</p>
-          </a>
-        </Link>
-      </div>
-    </div>
+  return {
+    duration,
+    duration_in_traffic,
+    delay: {
+      text: `${delayInMinutes} mins`,
+      value: delayInSeconds
+    }
+  }
+}
 
-    <style jsx>{`
-      .hero {
-        width: 100%;
-        color: #333;
+class Home extends Component {
+
+    static async getInitialProps ({ ctx }) {
+
+      // https://maps.googleapis.com/maps/api/directions/json?origin=36.144100,-95.983615&destination=36.038320,-95.742998&key={{BA_EXPY_KEY}}&departure_time=now
+      
+      // console.log('process.env.GOOGLE_KEY', process.env.GOOGLE_KEY)
+
+      const directions = await getDirections({
+        origin: '36.144100,-95.983615',
+        destination: '36.038320,-95.742998'
+      })
+
+      return { directions }
+    }
+
+    constructor(props) {
+      // Required step: always call the parent class' constructor
+      super(props)
+  
+      this.state = {
+        ...getNumbers(props.directions.routes[0].legs[0]),
+        shouldTake: null
       }
-      .title {
-        margin: 0;
-        width: 100%;
-        padding-top: 80px;
-        line-height: 1.15;
-        font-size: 48px;
-      }
-      .title,
-      .description {
-        text-align: center;
-      }
-      .row {
-        max-width: 880px;
-        margin: 80px auto 40px;
-        display: flex;
-        flex-direction: row;
-        justify-content: space-around;
-      }
-      .card {
-        padding: 18px 18px 24px;
-        width: 220px;
-        text-align: left;
-        text-decoration: none;
-        color: #434343;
-        border: 1px solid #9b9b9b;
-      }
-      .card:hover {
-        border-color: #067df7;
-      }
-      .card h3 {
-        margin: 0;
-        color: #067df7;
-        font-size: 18px;
-      }
-      .card p {
-        margin: 0;
-        padding: 12px 0 0;
-        font-size: 13px;
-        color: #333;
-      }
-    `}</style>
-  </div>
-)
+    }
+
+    componentDidMount = () => {
+      const { duration, delay } = this.state
+
+      this.setState({
+        shouldTake: this.shouldTake({ duration, delay })
+      })
+    }
+
+    shouldTake = ({duration, delay, threshold = 0.20}) => {
+      const delayLimit = duration.value * threshold
+
+      return delay.value < delayLimit
+    }
+
+    render () {
+        const { directions } = this.props
+
+        const { duration, duration_in_traffic, delay, shouldTake } = this.state
+
+        return (
+            <div>
+              <Head>
+                <title>Home</title>
+              </Head>
+
+              <Nav />
+
+              <div className='container mx-auto px-5'>
+
+                <div className='flex mb-4'>
+                  <div className='w-full'>
+
+                    {(shouldTake !== null) && (
+                      <div className='text-6xl text-center font-bold mb-4'>{ shouldTake ? 'Yes' : 'No' }</div>
+                    )}
+
+                    Delay is { delay.text }
+                    <pre>{ delay.value }</pre>
+                    <br />
+                    Standard Duration is { duration_in_traffic.text }
+                    <pre>{ duration.value }</pre>
+                    <br />
+                    Current Duration is { duration_in_traffic.text }
+                    <pre>{ duration_in_traffic.value }</pre>
+                    <br />
+
+                  </div>
+                </div>
+
+                <div className='flex mb-4'>
+                  <div className='w-full '>
+
+                    <pre>{ JSON.stringify(directions.routes[0].legs[0], null, 2) }</pre>
+
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+        )
+    }
+}
 
 export default Home
