@@ -34,7 +34,12 @@ class Home extends Component {
         destination: '36.038320,-95.742998'
       })
 
-      return { directions }
+      return {
+        directions: {
+          ...directions,
+          requestedAt: new Date()
+        }
+      }
     }
 
     constructor(props) {
@@ -66,6 +71,8 @@ class Home extends Component {
 
         const { duration, duration_in_traffic, delay, shouldTake } = this.state
 
+        const checkedDate = new Date(directions.requestedAt).toLocaleString('en-US', { hour: 'numeric',  minute: 'numeric', hour12: true })
+
         return (
             <div>
               <Head>
@@ -82,19 +89,24 @@ class Home extends Component {
                     <div className='text-xl text-center mb-4'>Should I take the BA?</div>
 
                     {(shouldTake !== null) && (
-                      <div className='text-6xl text-center font-bold mb-4'>{ shouldTake ? 'Yes' : 'No' }</div>
+                      <div className='messaging text-center my-5'>
+                        <div className='text-6xl font-bold'>{ shouldTake ? 'Yes' : 'No' }</div>
+                        <div>as of { checkedDate }</div>
+                      </div>
                     )}
 
+                    <hr />
+
                     <div className='traffic-details my-4'>
-                      Delay is { delay.text }
-                      <pre>{ delay.value }</pre>
-                      <br />
-                      Standard Duration is { duration_in_traffic.text }
-                      <pre>{ duration.value }</pre>
-                      <br />
-                      Current Duration is { duration_in_traffic.text }
-                      <pre>{ duration_in_traffic.value }</pre>
-                      <br />
+                        Delay is { delay.text }
+                        <pre>{ delay.value }</pre>
+                        <br />
+                        Standard Duration is { duration_in_traffic.text }
+                        <pre>{ duration.value }</pre>
+                        <br />
+                        Current Duration is { duration_in_traffic.text }
+                        <pre>{ duration_in_traffic.value }</pre>
+                        <br />
                     </div>
 
                   </div>
