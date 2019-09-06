@@ -85,15 +85,17 @@ class Home extends Component {
                       <div className='text-6xl text-center font-bold mb-4'>{ shouldTake ? 'Yes' : 'No' }</div>
                     )}
 
-                    Delay is { delay.text }
-                    <pre>{ delay.value }</pre>
-                    <br />
-                    Standard Duration is { duration_in_traffic.text }
-                    <pre>{ duration.value }</pre>
-                    <br />
-                    Current Duration is { duration_in_traffic.text }
-                    <pre>{ duration_in_traffic.value }</pre>
-                    <br />
+                    <div className='traffic-details my-4'>
+                      Delay is { delay.text }
+                      <pre>{ delay.value }</pre>
+                      <br />
+                      Standard Duration is { duration_in_traffic.text }
+                      <pre>{ duration.value }</pre>
+                      <br />
+                      Current Duration is { duration_in_traffic.text }
+                      <pre>{ duration_in_traffic.value }</pre>
+                      <br />
+                    </div>
 
                   </div>
                 </div>
