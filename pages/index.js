@@ -79,6 +79,8 @@ class Home extends Component {
                 <div className='flex mb-4'>
                   <div className='w-full'>
 
+                    <div className='text-xl text-center mb-4'>Should I take the BA?</div>
+
                     {(shouldTake !== null) && (
                       <div className='text-6xl text-center font-bold mb-4'>{ shouldTake ? 'Yes' : 'No' }</div>
                     )}
