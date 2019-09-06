@@ -2,5 +2,12 @@
     "alias": ["51", "should"],
     "env": {
         "GOOGLE_KEY": "@should-google-key"
-    }
+    },
+    "routes": [
+        {
+            "src": "/",
+            "headers": { "cache-control": "s-maxage=300" },
+            "dest": "/"
+        }
+    ]
 }
