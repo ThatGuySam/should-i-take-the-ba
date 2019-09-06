@@ -1,3 +1,6 @@
 {
-    "alias": ["51", "should"]
+    "alias": ["51", "should"],
+    "env": {
+        "GOOGLE_KEY": "@should-google-key"
+    }
 }
