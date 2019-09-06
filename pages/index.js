@@ -27,18 +27,22 @@ class Home extends Component {
 
       // https://maps.googleapis.com/maps/api/directions/json?origin=36.144100,-95.983615&destination=36.038320,-95.742998&key={{BA_EXPY_KEY}}&departure_time=now
       
-      // console.log('process.env.GOOGLE_KEY', process.env.GOOGLE_KEY)
+      const origin = '36.144100,-95.983615'
+
+      const destination = '36.038320,-95.742998'
 
       const directions = await getDirections({
-        origin: '36.144100,-95.983615',
-        destination: '36.038320,-95.742998'
+        origin,
+        destination
       })
 
       return {
         directions: {
           ...directions,
           requestedAt: new Date()
-        }
+        },
+        origin,
+        destination
       }
     }
 
@@ -58,6 +62,12 @@ class Home extends Component {
       this.setState({
         shouldTake: this.shouldTake({ duration, delay })
       })
+    }
+
+    get mapUrl () {
+      const { origin, destination } = this.props
+      
+      return `https://www.google.com/maps/dir/'${ origin }'/'${ destination }'`
     }
 
     shouldTake = ({duration, delay, threshold = 0.20}) => {
@@ -92,12 +102,13 @@ class Home extends Component {
                       <div className='messaging text-center my-5'>
                         <div className='text-6xl font-bold'>{ shouldTake ? 'Yes' : 'No' }</div>
                         <div>as of { checkedDate }</div>
+                        <a href={this.mapUrl} className='btn inline-block text-sm bg-transparent border hover:border-gray-800 rounded py-1 px-3 m-3'>View Map</a>
                       </div>
                     )}
 
                     <hr />
 
-                    <div className='traffic-details my-4'>
+                    <div className='traffic-details text-center my-4'>
                         Delay is { delay.text }
                         <pre>{ delay.value }</pre>
                         <br />
