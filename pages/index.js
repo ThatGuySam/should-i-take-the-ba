@@ -70,6 +70,18 @@ class Home extends Component {
       return `https://www.google.com/maps/dir/'${ origin }'/'${ destination }'`
     }
 
+    get humanReadableDelay () {
+      const { delay } = this.state
+
+      if (delay.value < 0) return 'No delay. Traffic is running faster than normal'
+
+      if (delay.value < 60) return `Delay is ${delay.value} seconds`
+
+      const delayInMinutes = Math.round(delay.value / 60)
+
+      return `Delay is ${delayInMinutes} minutes`
+    }
+
     shouldTake = ({duration, delay, threshold = 0.20}) => {
       const delayLimit = duration.value * threshold
 
@@ -101,7 +113,7 @@ class Home extends Component {
                     {(shouldTake !== null) && (
                       <div className='messaging text-center my-5'>
                         <div className='text-6xl font-bold'>{ shouldTake ? 'Yes' : 'No' }</div>
-                        <div>as of { checkedDate }</div>
+                        <div className='text-xl font-light mb-3'>{ this.humanReadableDelay } as of { checkedDate }</div>
                         <a href={this.mapUrl} className='btn inline-block text-sm bg-transparent border hover:border-gray-800 rounded py-1 px-3 m-3'>View Map</a>
                       </div>
                     )}
