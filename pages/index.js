@@ -3,6 +3,7 @@ import getDirections from '../lib/googleMaps/directions'
 import Head from 'next/head'
 
 // import Nav from '../components/nav'
+import Messaging from '../components/messaging'
 
 
 const getNumbers = (leg) => {
@@ -109,12 +110,19 @@ class Home extends Component {
                     <div className='text-xl text-center mb-4'>Should I take the BA?</div>
 
                     {(shouldTake !== null) && (
-                      <div className='messaging text-center my-5'>
-                        <div className='text-6xl font-bold'>{ shouldTake ? 'Yes' : 'No' }</div>
-                        <div className='text-xl font-light mb-3'>{ this.humanReadableDelay } as of { checkedDate }</div>
-                        <a href={this.mapUrl} className='btn inline-block text-sm bg-transparent border hover:border-gray-800 rounded py-1 px-3 m-3'>View Map</a>
-                      </div>
+                      <Messaging
+                        {...{
+                          shouldTake,
+                          checkedDate,
+                          humanReadableDelay: this.humanReadableDelay,
+                          mapUrl: this.mapUrl
+                        }}
+                      />
                     )}
+                    
+                    <div className='button-row text-center'>
+                      <a href={ this.mapUrl } className='btn inline-block text-sm bg-transparent border hover:border-gray-800 rounded py-1 px-3 m-3'>View Map</a>
+                    </div>
 
                     <hr />
 
