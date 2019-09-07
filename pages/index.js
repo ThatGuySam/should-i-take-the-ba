@@ -138,7 +138,7 @@ class Home extends Component {
                 <div className='flex mb-4'>
                   <div className='w-full '>
 
-                    <pre>{ JSON.stringify(directions.routes[0].legs[0], null, 2) }</pre>
+                    <pre className='overflow-x-scroll border rounded p-4'>{ JSON.stringify(directions.routes[0].legs[0], null, 2) }</pre>
 
                   </div>
                 </div>
