@@ -101,7 +101,7 @@ class Home extends Component {
                 <title>Should I Take The BA</title>
               </Head>
 
-              <div className='container mx-auto px-5'>
+              <div className='container mx-auto px-5 py-10'>
 
                 <div className='flex mb-4'>
                   <div className='w-full'>
