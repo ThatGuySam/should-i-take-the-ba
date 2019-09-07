@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import getDirections from '../lib/google-maps/directions'
+import getDirections from '../lib/googleMaps/directions'
 import Head from 'next/head'
 
 // import Nav from '../components/nav'
