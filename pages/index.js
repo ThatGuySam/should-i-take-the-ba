@@ -98,7 +98,7 @@ class Home extends Component {
         return (
             <div>
               <Head>
-                <title>Home</title>
+                <title>Should I Take The BA</title>
               </Head>
 
               <Nav />
