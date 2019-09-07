@@ -2,7 +2,7 @@ import React, { Component } from 'react'
 import getDirections from '../lib/google-maps/directions'
 import Head from 'next/head'
 
-import Nav from '../components/nav'
+// import Nav from '../components/nav'
 
 
 const getNumbers = (leg) => {
@@ -100,8 +100,6 @@ class Home extends Component {
               <Head>
                 <title>Should I Take The BA</title>
               </Head>
-
-              <Nav />
 
               <div className='container mx-auto px-5'>
 
