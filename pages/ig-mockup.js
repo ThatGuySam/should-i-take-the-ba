@@ -110,22 +110,30 @@ class Home extends Component {
                   <div className='w-full'>
 
                     {(shouldTake !== null) && (
-                      <Messaging
-                        className='mx-auto p-5'
+                      <div 
+                        className='ig-frame mx-auto p-6'
                         style={{
                           minHeight: 270,
                           maxWidth: 270,
-                          transform: 'scale(2)'
+                          transform: 'scale(3)',
                         }}
-                        {...{
-                          shouldTake,
-                          checkedDate,
-                          humanReadableDelay: this.humanReadableDelay
-                        }}
-                      />
+                      >
+                        <Messaging
+                          className='flex flex-col justify-center text-white rounded-lg p-5'
+                          style={{
+                            backgroundColor: (shouldTake) ? '#35c28c' : '#f34f49'
+                          }}
+                          {...{
+                            shouldTake,
+                            checkedDate,
+                            humanReadableDelay: this.humanReadableDelay
+                          }}
+                        />
+                      </div>
                     )}
 
                   </div>
+
                 </div>
 
               </div>

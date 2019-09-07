@@ -111,6 +111,7 @@ class Home extends Component {
 
                     {(shouldTake !== null) && (
                       <Messaging
+                        className='mb-5'
                         {...{
                           shouldTake,
                           checkedDate,
