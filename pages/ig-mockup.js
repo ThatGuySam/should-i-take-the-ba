@@ -107,19 +107,19 @@ class Home extends Component {
               <div className='container mx-auto px-5 py-10'>
 
                 <div className='flex items-center min-h-screen mb-4'>
-                  <div className='w-full'>
 
-                    {(shouldTake !== null) && (
+                  {(shouldTake !== null) && (
                       <div 
-                        className='ig-frame mx-auto p-6'
+                        className='ig-frame flex mx-auto p-3'
                         style={{
                           minHeight: 270,
+                          maxHeight: 308,
                           maxWidth: 270,
                           transform: 'scale(3)',
                         }}
                       >
                         <Messaging
-                          className='flex flex-col justify-center text-white rounded-lg p-5'
+                          className='flex flex-col justify-center text-white rounded-lg p-5 pb-10'
                           style={{
                             backgroundColor: (shouldTake) ? '#35c28c' : '#f34f49'
                           }}
@@ -131,8 +131,6 @@ class Home extends Component {
                         />
                       </div>
                     )}
-
-                  </div>
 
                 </div>
 
