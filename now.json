@@ -9,9 +9,9 @@
     },
     "routes": [
         {
-            "src": "/",
+            "src": "/api/directions",
             "headers": { "cache-control": "s-maxage=300" },
-            "dest": "/"
+            "dest": "/api/directions"
         }
     ]
 }
