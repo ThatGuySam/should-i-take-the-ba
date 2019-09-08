@@ -1,7 +1,7 @@
 import React, { Component } from 'react'
 import Head from 'next/head'
 
-import { ba_eb } from '../config'
+import { baEastBound } from '../config'
 import currentDomain from '../lib/currentDomain'
 import getDirections from '../lib/googleMaps/directions'
 
@@ -35,7 +35,7 @@ class Home extends Component {
       // const origin = '36.144100,-95.983615'
       // const destination = '36.038320,-95.742998'
 
-      const { origin, destination } = ba_eb
+      const { origin, destination } = baEastBound
 
       const directions = await getDirections({
         origin,
