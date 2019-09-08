@@ -24,7 +24,7 @@ const getNumbers = (leg) => {
   }
 }
 
-class Home extends Component {
+class IgMockup extends Component {
 
     static async getInitialProps ({ req }) {
       // Save request domain
@@ -144,4 +144,4 @@ class Home extends Component {
     }
 }
 
-export default Home
+export default IgMockup
