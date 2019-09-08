@@ -2,6 +2,8 @@ import React, { Component } from 'react'
 import getDirections from '../lib/googleMaps/directions'
 import Head from 'next/head'
 
+import currentDomain from '../lib/currentDomain'
+
 // import Nav from '../components/nav'
 import Messaging from '../components/messaging'
 
@@ -24,7 +26,9 @@ const getNumbers = (leg) => {
 
 class Home extends Component {
 
-    static async getInitialProps ({ ctx }) {
+    static async getInitialProps ({ req }) {
+      // Save request domain
+      currentDomain.setFromRequest(req)
 
       // https://maps.googleapis.com/maps/api/directions/json?origin=36.144100,-95.983615&destination=36.038320,-95.742998&key={{BA_EXPY_KEY}}&departure_time=now
       
