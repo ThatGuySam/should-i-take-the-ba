@@ -5,7 +5,8 @@
         "shoulditaketheba.com"
     ],
     "env": {
-        "GOOGLE_KEY": "@should-google-key"
+        "GOOGLE_KEY": "@should-google-key",
+        "SHOULD_MANAGER_API": "@should-manager-api"
     },
     "routes": [
         {
