@@ -18,6 +18,8 @@ type View = {
   answer: PublicStatus["answer"];
   sentence: string;
   checkedAt: string | null;
+  since: string | null;
+  next: string | null;
   stretches: PublicStatus["stretches"];
 };
 
@@ -26,6 +28,8 @@ const view = (s: PublicStatus): View => ({
   answer: s.answer,
   sentence: s.headline,
   checkedAt: s.checkedAt,
+  since: s.answer === "unknown" ? null : s.answerSince,
+  next: s.nextCheckAt,
   stretches: s.stretches,
 });
 
@@ -75,6 +79,7 @@ a{color:inherit}
 .sentence{font-size:clamp(1.2rem,3.2vw,1.9rem);font-weight:700;line-height:1.25;margin:.75rem auto 0;max-width:36rem;text-wrap:balance}
 .jams{margin:.6rem auto 0;font-size:1rem;font-weight:700;max-width:34rem;text-wrap:balance}
 .jams:empty{display:none}
+.meta.source{margin-top:.2rem;font-size:.82rem;opacity:.85}
 .meta{margin:.85rem auto 0;font-size:.95rem;font-weight:600;color:var(--meta)}
 .links{margin:1.25rem 0 0;display:flex;flex-wrap:wrap;justify-content:center;gap:0 1.25rem}
 .links a{font-size:.95rem;font-weight:600;color:var(--meta);padding:.6rem .25rem;text-decoration-thickness:1px;text-underline-offset:.2em}
@@ -119,7 +124,9 @@ function fit(){
  root.style.setProperty('--u',(W/w).toFixed(3));root.style.setProperty('--focus-y',(fy*100).toFixed(0)+'%');
 }
 fit();addEventListener('resize',fit);
-const ago=iso=>{if(!iso)return'not checked yet';const m=Math.round((Date.now()-Date.parse(iso))/60000);return m<1?'checked just now':m<60?'checked '+m+' min ago':'checked '+new Date(iso).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})};
+const clock=iso=>new Date(iso).toLocaleTimeString('en-US',{timeZone:'America/Chicago',hour:'numeric',minute:'2-digit'});
+const ago=iso=>{if(!iso)return'not checked yet';const m=Math.round((Date.now()-Date.parse(iso))/60000);return m<1?'checked just now':m<60?'checked '+m+' min ago':'checked at '+clock(iso)};
+const status=v=>[v.since?(v.answer==='no'?'Backed up':'Moving')+' since '+clock(v.since):'',ago(v.checkedAt),v.next&&Date.parse(v.next)>Date.now()?'next check ~'+clock(v.next):''].filter(Boolean).join(' · ');
 const $=s=>document.querySelector(s);
 function jamText(v){if(!v.stretches)return'';let o=v.stretches.map(x=>({...x}));if(v.direction==='westbound')o=o.reverse().map(x=>({...x,from:x.to,to:x.from}));const p=(l,n)=>{const a=o.filter(x=>x.level===l).map(x=>x.from+' to '+x.to);return a.length?n+': '+a.join(', ')+'.':''};return[p('jammed','Jammed'),p('slow','Slow')].filter(Boolean).join(' ')}
 // Remember a direction choice per half of the day (before or after noon) on this device.
@@ -136,7 +143,7 @@ function paint(v,animate){
  $('[data-map=apple]').href=LINKS[v.direction].apple;$('[data-map=google]').href=LINKS[v.direction].google;
  document.querySelectorAll('.flow').forEach((p,k)=>{const s=v.stretches&&v.stretches[k];if(s)p.dataset.level=s.level;else delete p.dataset.level});
  const word=$('.word'),sent=$('.sentence'),meta=$('.meta [data-ago]'),jams=$('.jams');
- const apply=()=>{word.textContent=t.word;word.toggleAttribute('data-long',t.word.length>3);sent.textContent=v.sentence;jams.textContent=jamText(v);meta.textContent=ago(v.checkedAt);word.classList.remove('out');sent.classList.remove('out')};
+ const apply=()=>{word.textContent=t.word;word.toggleAttribute('data-long',t.word.length>3);sent.textContent=v.sentence;jams.textContent=jamText(v);meta.textContent=status(v);word.classList.remove('out');sent.classList.remove('out')};
  if(animate&&!matchMedia('(prefers-reduced-motion: reduce)').matches){word.classList.add('out');sent.classList.add('out');setTimeout(apply,160)}else apply();
 }
 document.querySelectorAll('.toggle a').forEach(a=>a.addEventListener('click',e=>{
@@ -145,8 +152,9 @@ document.querySelectorAll('.toggle a').forEach(a=>a.addEventListener('click',e=>
  history.replaceState(null,'','?direction='+to);paint(data[to],true);
 }));
 {const r=remembered();if(!new URLSearchParams(location.search).has('direction')&&r&&r!==current&&data[r]){current=r;paint(data[r],false)}}
-setInterval(()=>{$('.meta [data-ago]').textContent=ago(data[current].checkedAt)},30000);
-async function refresh(){try{const r=await fetch('/api/v1/status',{cache:'no-store'});const j=await r.json();for(const s of j.directions)data[s.direction]={direction:s.direction,answer:s.answer,sentence:s.headline,checkedAt:s.checkedAt,stretches:s.stretches};paint(data[current],false)}catch{}}
+$('.meta [data-ago]').textContent=status(data[current]);
+setInterval(()=>{$('.meta [data-ago]').textContent=status(data[current])},30000);
+async function refresh(){try{const r=await fetch('/api/v1/status',{cache:'no-store'});const j=await r.json();for(const s of j.directions)data[s.direction]={direction:s.direction,answer:s.answer,sentence:s.headline,checkedAt:s.checkedAt,since:s.answer==='unknown'?null:s.answerSince,next:s.nextCheckAt,stretches:s.stretches};paint(data[current],false)}catch{}}
 setInterval(refresh,120000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
 })();`;
 
@@ -211,7 +219,8 @@ ${MAP.stretches.map((d, k) => `<path class="road flow"${levelAttr(k)} d="${d}"/>
 <p class="word swap"${t.word.length > 3 ? " data-long" : ""}>${t.word}</p>
 <p class="sentence swap">${esc(status.headline)}</p>
 <p class="jams">${esc(jamText(status.direction, status.stretches))}</p>
-<p class="meta">Google Maps traffic · ${ago}</p>
+<p class="meta">${ago}</p>
+<p class="meta source">Traffic from Google Maps</p>
 <p class="links"><a data-map="apple" href="${links.apple}">Open in Apple Maps</a><a data-map="google" href="${links.google}">Google Maps</a><a href="/about">How it works</a></p>
 </div>
 </main>

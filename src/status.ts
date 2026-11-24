@@ -1,5 +1,5 @@
 import { DIRECTIONS, type DirectionId, TIME_ZONE } from "./config";
-import { activeWindow, localTime } from "./core/schedule";
+import { activeWindow, localTime, nextCheck } from "./core/schedule";
 import type { DirectionStatus } from "./monitor";
 
 export type PublicStatus = {
@@ -12,6 +12,8 @@ export type PublicStatus = {
   headline: string;
   summary: string;
   checkedAt: string | null;
+  /** When the cron will next check this direction (no extra Google calls; just the schedule). */
+  nextCheckAt: string | null;
   fresh: boolean;
   /** The site's own derived level for the latest check, and per stretch (eastbound order). */
   level: DirectionStatus["level"];
@@ -59,6 +61,7 @@ export function toPublic(s: DirectionStatus, origin: string): PublicStatus {
     headline: headline(s.direction, s.answer),
     summary,
     checkedAt: s.checkedAt,
+    nextCheckAt: nextCheck(s.direction, new Date())?.toISOString() ?? null,
     fresh: s.fresh,
     level: s.level,
     stretches: s.stretches,

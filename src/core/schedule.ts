@@ -39,6 +39,14 @@ export function intervalFor(direction: DirectionId, t: LocalTime, episodeOpen: b
   return overnight ? POLL.overnightMin : POLL.shoulderMin;
 }
 
+/** The next scheduled check for a direction, assuming no backup is open. */
+export function nextCheck(direction: DirectionId, from: Date): Date | null {
+  const step = POLL.rushMin * 60_000;
+  let t = Math.ceil((from.getTime() + 1) / step) * step;
+  for (let i = 0; i < 72; i++, t += step) if (isDue(direction, new Date(t), false)) return new Date(t);
+  return null;
+}
+
 export function isDue(direction: DirectionId, at: Date, episodeOpen: boolean): boolean {
   const t = localTime(at);
   const interval = intervalFor(direction, t, episodeOpen);
