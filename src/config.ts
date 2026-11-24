@@ -66,6 +66,19 @@ export const VERDICT: VerdictConfig = {
   maxGapMin: 8,
 };
 
+// Polling policy. "dense" checks every 5 minutes through each rush window and is the reference the
+// adaptive policy is scored against (scripts/replay.ts). Switch to "adaptive" only after replay on
+// held-out weeks passes the gates in docs/polling-accuracy.md.
+export const POLICY = { mode: "dense" as "dense" | "adaptive", version: "2026-11-24" };
+
+// Adaptive: quiet checks in the rush window, 5-minute checks from the first slow reading, hold after
+// clearance, then step back down. Values are starting points to be tuned by replay.
+export const ADAPTIVE = { quietRushMin: 10, fastMin: 5, watchMin: 15, holdMin: 15, release: [10, 20] };
+
+// Audit days: one pre-assigned weekday per ISO week runs dense checks with padded rush windows, so the
+// adaptive policy keeps getting scored against a full reference after launch.
+export const AUDIT = { padMin: 30 };
+
 export const TIME_ZONE = "America/Chicago";
 
 // Stretches of the BA, eastbound order. Boundaries sit on the mainline between interchanges (not

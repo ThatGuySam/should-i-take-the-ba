@@ -1,7 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
-import { BUDGET, DIRECTIONS, type DirectionId, POLL, STRETCH_LEVELS, STRETCH_NAMES, VERDICT } from "./config";
+import { ADAPTIVE, BUDGET, DIRECTIONS, type DirectionId, POLL, STRETCH_LEVELS, STRETCH_NAMES, VERDICT } from "./config";
 import { decodeLevels, encodeLevels, type Level, routeLevel, stretchLevel } from "./core/levels";
-import { activeWindow, intervalFor, isDue, localTime } from "./core/schedule";
+import { type AdaptiveState, adaptiveAfter, idleAdaptive, planCheck, policyLabel, type Reason } from "./core/adaptive";
+import { activeWindow, intervalFor, localTime } from "./core/schedule";
 import { initialState, type Reading, step, type VerdictState } from "./core/verdict";
 import { type Env, publishEvent } from "./instagram";
 import { type PushTarget, sendPush } from "./push";
@@ -72,7 +73,7 @@ export class Monitor extends DurableObject<Env> {
         updated_at TEXT NOT NULL
       );
     `);
-    for (const column of ["level TEXT", "stretch_levels TEXT"]) {
+    for (const column of ["level TEXT", "stretch_levels TEXT", "reason TEXT", "answer TEXT", "policy TEXT"]) {
       try {
         this.sql.exec(`ALTER TABLE checks ADD COLUMN ${column}`);
       } catch {
@@ -105,7 +106,8 @@ export class Monitor extends DurableObject<Env> {
     const events: string[] = [];
     for (const direction of DIRECTION_IDS) {
       const { openEvent } = this.loadState(direction);
-      if (!isDue(direction, now, openEvent !== null || this.watching(direction, now))) continue;
+      const plan = planCheck(direction, now, { open: openEvent !== null || this.watching(direction, now), state: this.loadAdaptive(direction) });
+      if (!plan.due) continue;
       if (!this.withinBudget(direction, now)) continue;
       const slot = `${slotMinute}:${direction}`;
       const claimed = this.sql
@@ -113,7 +115,7 @@ export class Monitor extends DurableObject<Env> {
         .toArray();
       if (claimed.length === 0) continue;
       polled.push(direction);
-      const event = await this.poll(direction, now);
+      const event = await this.poll(direction, now, plan.reason);
       if (event) {
         events.push(event);
         await this.dispatch(event);
@@ -158,7 +160,16 @@ export class Monitor extends DurableObject<Env> {
     this.sql.exec("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value);
   }
 
-  async poll(direction: DirectionId, now: Date): Promise<string | null> {
+  private loadAdaptive(direction: DirectionId): AdaptiveState {
+    const raw = this.setting(`adaptive:${direction}`);
+    try {
+      return raw ? (JSON.parse(raw) as AdaptiveState) : idleAdaptive();
+    } catch {
+      return idleAdaptive();
+    }
+  }
+
+  async poll(direction: DirectionId, now: Date, reason: Reason | "manual" = "manual"): Promise<string | null> {
     // A failed stretch request turns stretches off for a day, then they are tried again.
     const offAt = this.setting("stretches_off_at");
     const withStretches = !offAt || now.getTime() - Date.parse(offAt) > 86_400_000;
@@ -173,7 +184,7 @@ export class Monitor extends DurableObject<Env> {
     const level = result.ok ? routeLevel(result.reading, VERDICT) : null;
     const stretchLevels = result.ok && result.stretches ? encodeLevels(result.stretches.map((r) => stretchLevel(r, STRETCH_LEVELS))) : null;
     this.sql.exec(
-      "INSERT INTO checks (direction, at, ok, error, provider, level, stretch_levels) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO checks (direction, at, ok, error, provider, level, stretch_levels, reason, policy) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       direction,
       result.ok ? result.reading.at : now.toISOString(),
       result.ok ? 1 : 0,
@@ -181,11 +192,20 @@ export class Monitor extends DurableObject<Env> {
       result.provider,
       level,
       stretchLevels,
+      reason,
+      policyLabel(),
     );
     if (!result.ok) return null;
+    const checkId = this.sql.exec<{ id: number }>("SELECT last_insert_rowid() AS id").one().id;
     const before = this.loadState(direction).verdict.answer;
     const event = this.applyReading(direction, result.reading, now);
-    if (before === "no" && this.loadState(direction).verdict.answer === "yes") await this.notifyCleared(direction, now);
+    const after = this.loadState(direction).verdict.answer;
+    this.sql.exec("UPDATE checks SET answer = ? WHERE id = ?", after, checkId);
+    if (level) {
+      const next = adaptiveAfter(this.loadAdaptive(direction), now, level, after, before === "no" && after === "yes", ADAPTIVE);
+      this.setSetting(`adaptive:${direction}`, JSON.stringify(next));
+    }
+    if (before === "no" && after === "yes") await this.notifyCleared(direction, now);
     return event;
   }
 
@@ -242,8 +262,8 @@ export class Monitor extends DurableObject<Env> {
   historyReport(days = 14) {
     const since = new Date(Date.now() - days * 86_400_000).toISOString();
     const rows = this.sql
-      .exec<{ direction: string; at: string; ok: number; error: string | null; provider: string | null; level: string | null; stretch_levels: string | null }>(
-        "SELECT direction, at, ok, error, provider, level, stretch_levels FROM checks WHERE at >= ? ORDER BY at",
+      .exec<{ direction: string; at: string; ok: number; error: string | null; provider: string | null; level: string | null; stretch_levels: string | null; reason: string | null; answer: string | null; policy: string | null }>(
+        "SELECT direction, at, ok, error, provider, level, stretch_levels, reason, answer, policy FROM checks WHERE at >= ? ORDER BY at",
         since,
       )
       .toArray();
