@@ -3,6 +3,7 @@ import type { DirectionId } from "./config";
 import type { Env } from "./instagram";
 import { caption } from "./instagram";
 import { homePage } from "./home";
+import { parseSubscription } from "./push";
 import { aboutPage, llmsTxt, markdownStatus } from "./pages";
 import { defaultDirection, type PublicStatus, toPublic } from "./status";
 import musePrompt from "../prompts/muse.md";
@@ -62,7 +63,7 @@ export default {
           return text(markdownStatus(all, origin), "text/markdown", 30);
         }
         const { recommended, all } = await publicStatuses(env, url.searchParams.get("direction"));
-        return new Response(homePage(recommended, all, origin), {
+        return new Response(homePage(recommended, all, origin, env.VAPID_PUBLIC_KEY), {
           headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=30", vary: "Accept" },
         });
       }
@@ -73,6 +74,21 @@ export default {
       case "/api/v1/status": {
         const { recommended, all } = await publicStatuses(env, url.searchParams.get("direction"));
         return json({ recommended, directions: all }, 30, true);
+      }
+      case "/api/v1/watch": {
+        if (request.method !== "POST" && request.method !== "DELETE") return new Response("Method not allowed", { status: 405 });
+        const body = await request.json().catch(() => null);
+        if (request.method === "DELETE") {
+          const endpoint = (body as { endpoint?: unknown } | null)?.endpoint;
+          if (typeof endpoint === "string") await monitor(env).removeWatch(endpoint);
+          return json({ ok: true }, 0, true);
+        }
+        const target = parseSubscription(body);
+        const b = body as { direction?: unknown; minutes?: unknown } | null;
+        const direction = b?.direction === "eastbound" || b?.direction === "westbound" ? b.direction : null;
+        if (!target || !direction) return json({ ok: false, error: "subscription and direction required" }, 0, true);
+        const minutes = typeof b?.minutes === "number" ? b.minutes : 90;
+        return json({ ok: true, ...(await monitor(env).addWatch(target, direction, minutes)) }, 0, true);
       }
       case "/api/v1/events":
         return json({ events: (await monitor(env).events(50)).map((e) => ({ ...e, caption: caption(e) })) }, 60, true);

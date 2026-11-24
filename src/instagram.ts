@@ -14,6 +14,8 @@ export type Env = {
   INSTAGRAM_USER_ID?: string;
   INSTAGRAM_ACCESS_TOKEN?: string;
   ADMIN_TOKEN?: string;
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
 };
 
 export type PublishUpdate = { status: string; containerId?: string; mediaId?: string; error?: string };

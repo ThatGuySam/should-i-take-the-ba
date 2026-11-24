@@ -79,6 +79,11 @@ a{color:inherit}
 .sentence{font-size:clamp(1.2rem,3.2vw,1.9rem);font-weight:700;line-height:1.25;margin:.75rem auto 0;max-width:36rem;text-wrap:balance}
 .jams{margin:.6rem auto 0;font-size:1rem;font-weight:700;max-width:34rem;text-wrap:balance}
 .jams:empty{display:none}
+.glare{margin:.6rem auto 0;font-size:.95rem;font-weight:700;max-width:34rem}.glare:empty{display:none}
+.watch{margin:1rem auto 0;max-width:30rem}.watch[hidden]{display:none}
+.watch button{font:inherit;font-weight:700;font-size:1rem;min-height:2.9rem;padding:.7rem 1.3rem;border:0;border-radius:999px;background:#fff;color:var(--bg);cursor:pointer}
+.watch p{margin:.4rem 0 0;font-size:.85rem;font-weight:600;color:var(--meta)}
+.watch .stop{background:none;color:var(--meta);min-height:auto;padding:.3rem;text-decoration:underline;font-size:.85rem}
 .saved{margin:.5rem 0 0;font-size:.8rem;font-weight:600;color:var(--meta)}.saved[hidden]{display:none}.saved button{font:inherit;color:inherit;background:none;border:0;padding:.4rem .2rem;text-decoration:underline;cursor:pointer}
 .meta.source{margin-top:.2rem;font-size:.82rem;opacity:.85}
 .meta{margin:.85rem auto 0;font-size:.95rem;font-weight:600;color:var(--meta)}
@@ -132,6 +137,11 @@ const $=s=>document.querySelector(s);
 function jamText(v){if(!v.stretches)return'';let o=v.stretches.map(x=>({...x}));if(v.direction==='westbound')o=o.reverse().map(x=>({...x,from:x.to,to:x.from}));const p=(l,n)=>{const a=o.filter(x=>x.level===l).map(x=>x.from+' to '+x.to);return a.length?n+': '+a.join(', ')+'.':''};return[p('jammed','Jammed'),p('slow','Slow')].filter(Boolean).join(' ')}
 // Remember a direction choice per half of the day (before or after noon) on this device.
 const half=()=>new Date().getHours()<12?'am':'pm';
+// Sun position (NOAA low-precision formulas), Tulsa. Glare when the sun is low and ahead.
+function sunAt(ms){const r=Math.PI/180,d=ms/864e5-10957.5,g=(357.529+.98560028*d)*r,q=280.459+.98564736*d,L=(q+1.915*Math.sin(g)+.02*Math.sin(2*g))*r,e=(23.439-36e-8*d)*r,ra=Math.atan2(Math.cos(e)*Math.sin(L),Math.cos(L)),dec=Math.asin(Math.sin(e)*Math.sin(L)),gmst=(18.697374558+24.06570982441908*d)%24,lat=36.09*r,H=((gmst*15-95.86)*r)-ra;const el=Math.asin(Math.sin(lat)*Math.sin(dec)+Math.cos(lat)*Math.cos(dec)*Math.cos(H));const az=(Math.atan2(Math.sin(H),Math.cos(H)*Math.sin(lat)-Math.tan(dec)*Math.cos(lat))/r+180)%360;return{el:el/r,az}}
+const HEADING={eastbound:115,westbound:295};
+function glareWindow(dir,day){const start=new Date(day);start.setHours(5,0,0,0);let a=null,b=null;for(let t=start.getTime();t<start.getTime()+16*36e5;t+=5*6e4){const s=sunAt(t),off=Math.abs(((s.az-HEADING[dir])+540)%360-180),hit=s.el>0&&s.el<20&&off<30;if(hit&&a===null)a=t;if(hit)b=t;if(!hit&&a!==null&&b!==null&&t-b>36e5)break}return a===null?null:{a,b:b+5*6e4}}
+function glareText(dir){const w=glareWindow(dir,new Date()),now=Date.now();if(!w||now>w.b||w.a-now>3*36e5)return'';const f=t=>clock(new Date(t).toISOString());return(now>=w.a?'Low sun in your eyes '+(dir==='eastbound'?'eastbound':'westbound')+' until about '+f(w.b)+'.':'Low sun ahead '+(dir==='eastbound'?'eastbound':'westbound')+' about '+f(w.a)+'–'+f(w.b)+'.')}
 const remembered=()=>{try{return localStorage.getItem('ba:dir:'+half())}catch{return null}};
 let current=$('[data-direction]').dataset.direction;
 function paint(v,animate){
@@ -143,6 +153,7 @@ function paint(v,animate){
  document.querySelectorAll('.toggle a').forEach(a=>a.setAttribute('aria-current',String(a.dataset.to===v.direction)));
  $('[data-map=apple]').href=LINKS[v.direction].apple;$('[data-map=google]').href=LINKS[v.direction].google;
  document.querySelectorAll('.flow').forEach((p,k)=>{const s=v.stretches&&v.stretches[k];if(s)p.dataset.level=s.level;else delete p.dataset.level});
+ $('.glare').textContent=glareText(v.direction);showWatch(v);
  const word=$('.word'),sent=$('.sentence'),meta=$('.meta [data-ago]'),jams=$('.jams');
  const apply=()=>{word.textContent=t.word;word.toggleAttribute('data-long',t.word.length>3);sent.textContent=v.sentence;jams.textContent=jamText(v);meta.textContent=status(v);word.classList.remove('out');sent.classList.remove('out')};
  if(animate&&!matchMedia('(prefers-reduced-motion: reduce)').matches){word.classList.add('out');sent.classList.add('out');setTimeout(apply,160)}else apply();
@@ -153,6 +164,26 @@ document.querySelectorAll('.toggle a').forEach(a=>a.addEventListener('click',e=>
  saved.hidden=true;
  history.replaceState(null,'','?direction='+to);paint(data[to],true);
 }));
+// Tell me when it clears: one push on the next confirmed No to Yes for this direction.
+const VAPID=document.querySelector('meta[name=vapid]').content,watchEl=$('.watch');
+const ios=/iPhone|iPad|iPod/.test(navigator.userAgent),standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone;
+const canPush='serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+const getWatch=()=>{try{const w=JSON.parse(localStorage.getItem('ba:watch')||'null');return w&&Date.parse(w.expiresAt)>Date.now()?w:null}catch{return null}};
+function showWatch(v){const w=getWatch();const btn=watchEl.querySelector('.go'),msg=watchEl.querySelector('.msg'),stop=watchEl.querySelector('.stop');
+ if(w&&w.direction===v.direction){watchEl.hidden=false;btn.hidden=true;stop.hidden=false;msg.textContent='Watching until '+clock(w.expiresAt)+'. You get one notification when it clears.';return}
+ stop.hidden=true;if(v.answer!=='no'){watchEl.hidden=true;return}watchEl.hidden=false;
+ if(ios&&!standalone){btn.hidden=true;msg.textContent='To get a notice when it clears on iPhone, tap Share, then Add to Home Screen, and open it from there.';return}
+ if(!canPush){btn.hidden=true;msg.textContent='';watchEl.hidden=true;return}
+ btn.hidden=false;msg.textContent='One notification when it’s moving again. Watches for up to 90 minutes.'}
+const b64=s=>{const p='='.repeat((4-s.length%4)%4),r=atob((s+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(r,c=>c.charCodeAt(0))};
+watchEl.querySelector('.go').addEventListener('click',async()=>{const msg=watchEl.querySelector('.msg');try{
+ const reg=await navigator.serviceWorker.register('/sw.js');if(await Notification.requestPermission()!=='granted'){msg.textContent='Notifications are blocked for this site in your browser settings.';return}
+ const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(VAPID)});
+ const r=await fetch('/api/v1/watch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({subscription:sub.toJSON(),direction:current,minutes:90})}).then(r=>r.json());
+ if(!r.ok)throw new Error(r.error);localStorage.setItem('ba:watch',JSON.stringify({direction:current,expiresAt:r.expiresAt,endpoint:sub.endpoint}));showWatch(data[current])}
+ catch(e){msg.textContent='Could not start watching. Try again in a moment.'}});
+watchEl.querySelector('.stop').addEventListener('click',async()=>{const w=getWatch();localStorage.removeItem('ba:watch');if(w)fetch('/api/v1/watch',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:w.endpoint})}).catch(()=>{});showWatch(data[current])});
+showWatch(data[current]);$('.glare').textContent=glareText(current);
 const def=current,saved=$('.saved');
 {const r=remembered();if(!new URLSearchParams(location.search).has('direction')&&r&&r!==current&&data[r]){current=r;paint(data[r],false);saved.firstChild.textContent='Your saved '+(half()==='am'?'morning':'afternoon')+' direction · ';saved.hidden=false}}
 saved.querySelector('button').addEventListener('click',()=>{try{localStorage.removeItem('ba:dir:'+half())}catch{}saved.hidden=true;if(current!==def){current=def;paint(data[def],true)}});
@@ -162,7 +193,7 @@ async function refresh(){try{const r=await fetch('/api/v1/status',{cache:'no-sto
 setInterval(refresh,120000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
 })();`;
 
-export function homePage(status: PublicStatus, all: PublicStatus[], origin: string) {
+export function homePage(status: PublicStatus, all: PublicStatus[], origin: string, vapidKey = "") {
   const t = THEMES[status.answer];
   const views = Object.fromEntries(all.map((s) => [s.direction, view(s)]));
   const title = "Should I take the BA? Live Broken Arrow Expressway traffic in Tulsa";
@@ -197,6 +228,7 @@ export function homePage(status: PublicStatus, all: PublicStatus[], origin: stri
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="${t.bg}">
 <title>${esc(title)}</title><meta name="description" content="${esc(description)}">
 <link rel="canonical" href="${origin}/"><link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><meta name="vapid" content="${esc(vapidKey)}">
 <link rel="alternate" type="text/markdown" href="${origin}/index.md" title="Markdown">
 <meta property="og:site_name" content="Should I take the BA?"><meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${origin}/">
@@ -224,6 +256,8 @@ ${MAP.stretches.map((d, k) => `<path class="road flow"${levelAttr(k)} d="${d}"/>
 <p class="word swap"${t.word.length > 3 ? " data-long" : ""}>${t.word}</p>
 <p class="sentence swap">${esc(status.headline)}</p>
 <p class="jams">${esc(jamText(status.direction, status.stretches))}</p>
+<p class="glare"></p>
+<div class="watch" hidden><button type="button" class="go">Tell me when it clears</button><p class="msg"></p><button type="button" class="stop" hidden>Stop watching</button></div>
 <p class="meta">${ago}</p>
 <p class="meta source">Traffic from Google Maps</p>
 <p class="links"><a data-map="apple" href="${links.apple}">Open in Apple Maps</a><a data-map="google" href="${links.google}">Google Maps</a><a href="/about">How it works</a></p>

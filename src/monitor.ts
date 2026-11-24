@@ -4,6 +4,7 @@ import { decodeLevels, encodeLevels, type Level, routeLevel, stretchLevel } from
 import { activeWindow, intervalFor, isDue, localTime } from "./core/schedule";
 import { initialState, type Reading, step, type VerdictState } from "./core/verdict";
 import { type Env, publishEvent } from "./instagram";
+import { type PushTarget, sendPush } from "./push";
 import { fetchTraffic } from "./traffic";
 
 export type DirectionStatus = {
@@ -58,6 +59,10 @@ export class Monitor extends DurableObject<Env> {
       CREATE INDEX IF NOT EXISTS checks_dir_at ON checks(direction, at);
       CREATE TABLE IF NOT EXISTS usage (month TEXT PRIMARY KEY, calls INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS watches (
+        endpoint TEXT PRIMARY KEY, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
+        direction TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS state (
         direction TEXT PRIMARY KEY, verdict TEXT NOT NULL, open_event TEXT
       );
@@ -100,7 +105,7 @@ export class Monitor extends DurableObject<Env> {
     const events: string[] = [];
     for (const direction of DIRECTION_IDS) {
       const { openEvent } = this.loadState(direction);
-      if (!isDue(direction, now, openEvent !== null)) continue;
+      if (!isDue(direction, now, openEvent !== null || this.watching(direction, now))) continue;
       if (!this.withinBudget(direction, now)) continue;
       const slot = `${slotMinute}:${direction}`;
       const claimed = this.sql
@@ -115,6 +120,7 @@ export class Monitor extends DurableObject<Env> {
       }
     }
     for (const e of this.events(20)) if (e.status === "container") await this.dispatch(e.id);
+    await this.expireWatches(now);
     this.prune(now);
     return { polled, events };
   }
@@ -174,7 +180,60 @@ export class Monitor extends DurableObject<Env> {
       level,
       stretchLevels,
     );
-    return result.ok ? this.applyReading(direction, result.reading, now) : null;
+    if (!result.ok) return null;
+    const before = this.loadState(direction).verdict.answer;
+    const event = this.applyReading(direction, result.reading, now);
+    if (before === "no" && this.loadState(direction).verdict.answer === "yes") await this.notifyCleared(direction, now);
+    return event;
+  }
+
+  // "Tell me when it clears": one notification on the next confirmed No→Yes flip, then the watch
+  // is deleted. While anyone watches a direction, it is checked every 5 minutes (within budget).
+  private watching(direction: DirectionId, now: Date): boolean {
+    return this.sql.exec("SELECT 1 FROM watches WHERE direction = ? AND expires_at > ? LIMIT 1", direction, now.toISOString()).toArray().length > 0;
+  }
+
+  addWatch(target: PushTarget, direction: DirectionId, minutes: number): { expiresAt: string } {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + Math.min(Math.max(minutes, 15), 180) * 60_000).toISOString();
+    this.sql.exec(
+      "INSERT INTO watches (endpoint, p256dh, auth, direction, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth, direction = excluded.direction, created_at = excluded.created_at, expires_at = excluded.expires_at",
+      target.endpoint, target.p256dh, target.auth, direction, now.toISOString(), expiresAt,
+    );
+    return { expiresAt };
+  }
+
+  removeWatch(endpoint: string) {
+    this.sql.exec("DELETE FROM watches WHERE endpoint = ?", endpoint);
+  }
+
+  private takeWatches(where: string, ...args: string[]): (PushTarget & { direction: DirectionId })[] {
+    const rows = this.sql
+      .exec<{ endpoint: string; p256dh: string; auth: string; direction: string }>(`SELECT endpoint, p256dh, auth, direction FROM watches WHERE ${where}`, ...args)
+      .toArray();
+    this.sql.exec(`DELETE FROM watches WHERE ${where}`, ...args);
+    return rows.map((r) => ({ endpoint: r.endpoint, p256dh: r.p256dh, auth: r.auth, direction: r.direction as DirectionId }));
+  }
+
+  private async notifyCleared(direction: DirectionId, now: Date) {
+    const d = DIRECTIONS[direction];
+    const when = now.toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "2-digit" });
+    const url = `${this.env.PUBLIC_ORIGIN}/?direction=${direction}`;
+    for (const w of this.takeWatches("direction = ?", direction)) {
+      await sendPush(this.env, w, { title: "The BA is moving", body: `${d.from} to ${d.to} cleared up as of ${when}.`, url, tag: `ba-${direction}` });
+    }
+  }
+
+  private async expireWatches(now: Date) {
+    for (const w of this.takeWatches("expires_at <= ?", now.toISOString())) {
+      const d = DIRECTIONS[w.direction];
+      await sendPush(this.env, w, {
+        title: "Still backed up",
+        body: `${d.from} to ${d.to} hadn't cleared when your watch ended. Check before you go.`,
+        url: `${this.env.PUBLIC_ORIGIN}/?direction=${w.direction}`,
+        tag: `ba-${w.direction}`,
+      });
+    }
   }
 
   /** Derived levels for trend charts: one row per successful check. */

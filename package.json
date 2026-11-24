@@ -14,5 +14,8 @@
     "@types/bun": "1.4.5",
     "typescript": "7.0.2",
     "wrangler": "4.165.0"
+  },
+  "dependencies": {
+    "@block65/webcrypto-web-push": "^2.0.0"
   }
 }
