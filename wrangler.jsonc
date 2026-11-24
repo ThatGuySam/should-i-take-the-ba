@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "should-i-take-the-ba",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "assets": { "directory": "public", "binding": "ASSETS", "run_worker_first": false },
+  "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
+  "durable_objects": { "bindings": [{ "name": "MONITOR", "class_name": "Monitor" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Monitor"] }],
+  "r2_buckets": [{ "binding": "CARDS", "bucket_name": "should-i-take-the-ba-cards" }],
+  "images": { "binding": "IMAGES" },
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "observability": { "enabled": true },
+  "vars": {
+    "PUBLIC_ORIGIN": "https://should-i-take-the-ba.samcarlton.workers.dev",
+    "TRAFFIC_PROVIDER": "google-routes",
+    "INSTAGRAM_MODE": "dry-run"
+  }
+}

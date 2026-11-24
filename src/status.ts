@@ -1,0 +1,50 @@
+import { DIRECTIONS, type DirectionId, TIME_ZONE } from "./config";
+import { activeWindow, localTime } from "./core/schedule";
+import type { DirectionStatus } from "./monitor";
+
+export type PublicStatus = {
+  question: string;
+  direction: DirectionId;
+  route: { from: string; to: string; label: string };
+  answer: "yes" | "no" | "unknown";
+  summary: string;
+  checkedAt: string | null;
+  fresh: boolean;
+  answerSince: string | null;
+  source: string;
+  monitoring: { lastAttemptAt: string | null; lastError: string | null };
+};
+
+export function defaultDirection(now = new Date()): DirectionId {
+  const t = localTime(now);
+  const window = activeWindow(t);
+  if (window) return window.direction;
+  return t.minuteOfDay < 12 * 60 ? "westbound" : "eastbound";
+}
+
+export const formatTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString("en-US", { timeZone: TIME_ZONE, hour: "numeric", minute: "2-digit" });
+
+export function toPublic(s: DirectionStatus): PublicStatus {
+  const d = DIRECTIONS[s.direction];
+  const label = d.label.toLowerCase();
+  let summary = "No current traffic check. Check back soon.";
+  if (s.checkedAt && s.fresh) {
+    const when = formatTime(s.checkedAt);
+    summary = s.answer === "no" ? `Traffic is backed up ${label} as of ${when}.` : `Traffic is moving ${label} as of ${when}.`;
+  } else if (s.checkedAt) {
+    summary = `The last check was at ${formatTime(s.checkedAt)} and is out of date.`;
+  }
+  return {
+    question: "Should I take the BA?",
+    direction: s.direction,
+    route: { from: d.from, to: d.to, label: d.label },
+    answer: s.answer,
+    summary,
+    checkedAt: s.checkedAt,
+    fresh: s.fresh,
+    answerSince: Date.parse(s.answerSince) > 0 ? s.answerSince : null,
+    source: "Based on traffic from Google Maps Platform",
+    monitoring: { lastAttemptAt: s.lastAttemptAt, lastError: s.lastError },
+  };
+}
