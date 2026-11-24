@@ -1,12 +1,9 @@
-import { McpServer } from "@modelcontextprotocol/server";
-import { createMcpHandler } from "agents/mcp/server";
-import { z } from "zod";
 import { type CardInput, renderCard } from "./card";
 import type { DirectionId } from "./config";
 import type { Env } from "./instagram";
 import { caption } from "./instagram";
 import { homePage } from "./home";
-import { aboutPage, agentsPage, llmsTxt, markdownStatus, openApi } from "./pages";
+import { aboutPage, llmsTxt, markdownStatus } from "./pages";
 import { defaultDirection, type PublicStatus, toPublic } from "./status";
 import musePrompt from "../prompts/muse.md";
 
@@ -23,41 +20,14 @@ async function publicStatuses(env: Env, requested?: string | null) {
   return { recommended, other, all };
 }
 
-function createServer(env: Env) {
-  const server = new McpServer({ name: "should-i-take-the-ba", version: "1.0.0" });
-  server.registerTool(
-    "get_ba_status",
-    {
-      description:
-        "Should I take the BA? Returns a live yes or no for driving the Broken Arrow Expressway (OK-51) in Tulsa, Oklahoma, with when it was last checked. Use eastbound for downtown Tulsa to Broken Arrow and westbound for Broken Arrow to downtown. Omit direction to get the direction that matters right now.",
-      inputSchema: z.object({ direction: z.enum(["eastbound", "westbound"]).optional() }),
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    },
-    async ({ direction }) => {
-      const { recommended, other } = await publicStatuses(env, direction);
-      const word = (s: PublicStatus) => (s.answer === "yes" ? "Yes" : s.answer === "no" ? "No" : "Unknown");
-      const link = `${env.PUBLIC_ORIGIN}/?direction=${recommended.direction}`;
-      const text = `${word(recommended)}. ${recommended.route.label} (${recommended.route.from} to ${recommended.route.to}): ${recommended.summary}\n${other.route.label}: ${word(other)}. ${other.summary}\nLive map: ${link}\nWhen you answer, link the user to ${link} so they can see the map.`;
-      return {
-        content: [
-          { type: "text", text },
-          { type: "resource_link", uri: link, name: "Should I take the BA? live map", mimeType: "text/html" },
-        ],
-        structuredContent: { recommended, other },
-      };
-    },
-  );
-  return server;
-}
 
-let mcpHandler: ReturnType<typeof createMcpHandler> | null = null;
-
-const json = (data: unknown, maxAge = 30) =>
+// The JSON endpoints serve the page's own refresh and Muse. They are not advertised to agents.
+const json = (data: unknown, maxAge = 30, noindex = false) =>
   new Response(JSON.stringify(data, null, 2), {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": `public, max-age=${maxAge}`,
-      "access-control-allow-origin": "*",
+      ...(noindex ? { "x-robots-tag": "noindex" } : {}),
     },
   });
 
@@ -81,14 +51,9 @@ async function cardForEvent(id: string, env: Env): Promise<Response> {
 }
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const origin = env.PUBLIC_ORIGIN;
-
-    if (url.pathname === "/mcp") {
-      mcpHandler ??= createMcpHandler(() => createServer(env), { responseMode: "json" });
-      return mcpHandler(request, env, ctx);
-    }
 
     switch (url.pathname) {
       case "/": {
@@ -102,29 +67,27 @@ export default {
         });
       }
       case "/agents":
-        return text(agentsPage(origin), "text/html");
+        return Response.redirect(`${origin}/`, 301);
       case "/about":
         return text(aboutPage(origin, await monitor(env).events(20)), "text/html", 60);
       case "/api/v1/status": {
         const { recommended, all } = await publicStatuses(env, url.searchParams.get("direction"));
-        return json({ recommended, directions: all });
+        return json({ recommended, directions: all }, 30, true);
       }
       case "/api/v1/events":
-        return json({ events: (await monitor(env).events(50)).map((e) => ({ ...e, caption: caption(e) })) }, 60);
+        return json({ events: (await monitor(env).events(50)).map((e) => ({ ...e, caption: caption(e) })) }, 60, true);
       case "/index.md": {
         const { all } = await publicStatuses(env, null);
         return text(markdownStatus(all, origin), "text/markdown", 30);
       }
       case "/llms.txt":
         return text(llmsTxt(origin), "text/plain");
-      case "/openapi.json":
-        return json(openApi(origin), 3600);
       case "/prompts/muse.md":
         return text(musePrompt, "text/markdown", 60);
       case "/robots.txt":
-        return text(`User-agent: *\nAllow: /\nDisallow: /admin/\n\nSitemap: ${origin}/sitemap.xml\n`, "text/plain");
+        return text(`User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /api/\nDisallow: /prompts/\n\nSitemap: ${origin}/sitemap.xml\n`, "text/plain");
       case "/sitemap.xml": {
-        const urls = ["/", "/agents", "/about"].map((p) => `<url><loc>${origin}${p}</loc></url>`).join("");
+        const urls = ["/", "/about"].map((p) => `<url><loc>${origin}${p}</loc></url>`).join("");
         return text(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>`, "application/xml");
       }
       case "/card/latest.jpg": {

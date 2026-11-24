@@ -141,7 +141,6 @@ export function homePage(status: PublicStatus, all: PublicStatus[], origin: stri
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="${t.bg}">
 <title>${esc(title)}</title><meta name="description" content="${esc(description)}">
 <link rel="canonical" href="${origin}/"><link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="alternate" type="application/json" href="${origin}/api/v1/status" title="Status API">
 <link rel="alternate" type="text/markdown" href="${origin}/index.md" title="Markdown">
 <meta property="og:site_name" content="Should I take the BA?"><meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${origin}/">
@@ -168,7 +167,7 @@ export function homePage(status: PublicStatus, all: PublicStatus[], origin: stri
 <p class="word swap"${t.word.length > 3 ? " data-long" : ""}>${t.word}</p>
 <p class="sentence swap">${esc(status.headline)}</p>
 <p class="meta">Google Maps traffic · ${ago}</p>
-<p class="links"><a href="/agents">Ask your AI</a><a href="/about">How it works</a></p>
+<p class="links"><a href="/about">How it works</a></p>
 </div>
 </main>
 <script type="application/json" id="views">${JSON.stringify(views).replace(/</g, "\\u003c")}</script>

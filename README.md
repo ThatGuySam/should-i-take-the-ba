@@ -14,7 +14,7 @@ Prototype: https://should-i-take-the-ba.samcarlton.workers.dev
   still works for projects that had it enabled before October 2026.
 - A SQLite Durable Object (`src/monitor.ts`) stores each direction's Yes/No verdict, when each
   check ran, and a posting ledger. It never stores a travel time: Google's terms bar caching route
-  durations, so each reading is used once in memory and dropped. Visitors, agents and images read
+  durations, so each reading is used once in memory and dropped. Visitors and images read
   the stored Yes/No and never call Google.
 - `src/core/verdict.ts` is the state machine. It flips to No at 20% and 2 minutes of delay on two
   readings, and back to Yes at 10% or 90 seconds on three readings.
@@ -29,13 +29,15 @@ Prototype: https://should-i-take-the-ba.samcarlton.workers.dev
 | Path | What |
 | --- | --- |
 | `/` | Answer page (`?direction=eastbound|westbound`); Markdown with `Accept: text/markdown` |
-| `/agents` | Set up Claude, ChatGPT, Cursor, VS Code or any agent |
 | `/about` | Method and recent answer changes |
-| `/api/v1/status`, `/api/v1/events` | JSON |
-| `/openapi.json`, `/llms.txt`, `/index.md` | Machine-readable descriptions |
-| `/mcp` | MCP server (Streamable HTTP, no auth), tool `get_ba_status` |
+| `/index.md`, `/llms.txt`, `/sitemap.xml` | Readable copies for search engines and AI that browse |
 | `/card/latest.jpg`, `/cards/e/<id>.jpg`, `/card/sample.jpg?answer=no` | Share images |
 | `/prompts/muse.md` | Instructions for Muse, from `prompts/muse.md` |
+
+`/api/v1/status` and `/api/v1/events` stay for the page's own refresh and for Muse. They are not
+linked or advertised, robots.txt disallows `/api/`, and responses carry `X-Robots-Tag: noindex`.
+The MCP server and the agent setup page were removed on 2026-11-23; they are in git history
+(commit 704fe90) if they come back.
 
 ## Setup
 
