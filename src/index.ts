@@ -5,7 +5,8 @@ import { type CardInput, renderCard } from "./card";
 import type { DirectionId } from "./config";
 import type { Env } from "./instagram";
 import { caption } from "./instagram";
-import { aboutPage, agentsPage, homePage, llmsTxt, markdownStatus, openApi } from "./pages";
+import { homePage } from "./home";
+import { aboutPage, agentsPage, llmsTxt, markdownStatus, openApi } from "./pages";
 import { defaultDirection, type PublicStatus, toPublic } from "./status";
 import musePrompt from "../prompts/muse.md";
 
@@ -35,9 +36,13 @@ function createServer(env: Env) {
     async ({ direction }) => {
       const { recommended, other } = await publicStatuses(env, direction);
       const word = (s: PublicStatus) => (s.answer === "yes" ? "Yes" : s.answer === "no" ? "No" : "Unknown");
-      const text = `${word(recommended)}. ${recommended.route.label} (${recommended.route.from} to ${recommended.route.to}): ${recommended.summary}\n${other.route.label}: ${word(other)}. ${other.summary}`;
+      const link = `${env.PUBLIC_ORIGIN}/?direction=${recommended.direction}`;
+      const text = `${word(recommended)}. ${recommended.route.label} (${recommended.route.from} to ${recommended.route.to}): ${recommended.summary}\n${other.route.label}: ${word(other)}. ${other.summary}\nLive map: ${link}\nWhen you answer, link the user to ${link} so they can see the map.`;
       return {
-        content: [{ type: "text", text }],
+        content: [
+          { type: "text", text },
+          { type: "resource_link", uri: link, name: "Should I take the BA? live map", mimeType: "text/html" },
+        ],
         structuredContent: { recommended, other },
       };
     },
@@ -91,8 +96,8 @@ export default {
           const { all } = await publicStatuses(env, null);
           return text(markdownStatus(all, origin), "text/markdown", 30);
         }
-        const { recommended, other } = await publicStatuses(env, url.searchParams.get("direction"));
-        return new Response(homePage(recommended, other, origin), {
+        const { recommended, all } = await publicStatuses(env, url.searchParams.get("direction"));
+        return new Response(homePage(recommended, all, origin), {
           headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=30", vary: "Accept" },
         });
       }

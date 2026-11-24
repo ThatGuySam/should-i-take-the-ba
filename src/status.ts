@@ -7,6 +7,7 @@ export type PublicStatus = {
   direction: DirectionId;
   route: { from: string; to: string; label: string };
   answer: "yes" | "no" | "unknown";
+  headline: string;
   summary: string;
   checkedAt: string | null;
   fresh: boolean;
@@ -25,6 +26,14 @@ export function defaultDirection(now = new Date()): DirectionId {
 export const formatTime = (iso: string) =>
   new Date(iso).toLocaleTimeString("en-US", { timeZone: TIME_ZONE, hour: "numeric", minute: "2-digit" });
 
+export function headline(direction: DirectionId, answer: "yes" | "no" | "unknown"): string {
+  const d = DIRECTIONS[direction];
+  const route = `${d.from} to ${d.to}`;
+  if (answer === "yes") return `Traffic is moving, ${route}.`;
+  if (answer === "no") return `Backed up from ${route}. Try another way.`;
+  return `No current traffic check for ${route}.`;
+}
+
 export function toPublic(s: DirectionStatus): PublicStatus {
   const d = DIRECTIONS[s.direction];
   const label = d.label.toLowerCase();
@@ -40,6 +49,7 @@ export function toPublic(s: DirectionStatus): PublicStatus {
     direction: s.direction,
     route: { from: d.from, to: d.to, label: d.label },
     answer: s.answer,
+    headline: headline(s.direction, s.answer),
     summary,
     checkedAt: s.checkedAt,
     fresh: s.fresh,
