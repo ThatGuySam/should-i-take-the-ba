@@ -159,12 +159,14 @@ export class Monitor extends DurableObject<Env> {
   }
 
   async poll(direction: DirectionId, now: Date): Promise<string | null> {
-    const withStretches = this.setting("stretches") !== "off";
+    // A failed stretch request turns stretches off for a day, then they are tried again.
+    const offAt = this.setting("stretches_off_at");
+    const withStretches = !offAt || now.getTime() - Date.parse(offAt) > 86_400_000;
     let result = await fetchTraffic(DIRECTIONS[direction], this.env, now, withStretches);
     this.countCall(now);
     if (!result.ok && withStretches && result.error.startsWith("stretch waypoints")) {
       // A waypoint snapped off the BA. Turn stretches off until someone fixes the boundaries.
-      this.setSetting("stretches", "off");
+      this.setSetting("stretches_off_at", now.toISOString());
       result = await fetchTraffic(DIRECTIONS[direction], this.env, now, false);
       this.countCall(now);
     }
@@ -234,6 +236,20 @@ export class Monitor extends DurableObject<Env> {
         tag: `ba-${w.direction}`,
       });
     }
+  }
+
+  /** Admin view: every check (ok or not) plus counts, for auditing what has been recorded. */
+  historyReport(days = 14) {
+    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    const rows = this.sql
+      .exec<{ direction: string; at: string; ok: number; error: string | null; provider: string | null; level: string | null; stretch_levels: string | null }>(
+        "SELECT direction, at, ok, error, provider, level, stretch_levels FROM checks WHERE at >= ? ORDER BY at",
+        since,
+      )
+      .toArray();
+    const first = this.sql.exec<{ at: string | null }>("SELECT MIN(at) AS at FROM checks").one().at;
+    const usage = this.sql.exec<{ month: string; calls: number }>("SELECT month, calls FROM usage ORDER BY month").toArray();
+    return { firstCheckEver: first, total: rows.length, ok: rows.filter((r) => r.ok).length, usage, rows };
   }
 
   /** Derived levels for trend charts: one row per successful check. */

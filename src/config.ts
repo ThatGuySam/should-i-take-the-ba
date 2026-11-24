@@ -69,13 +69,15 @@ export const VERDICT: VerdictConfig = {
 export const TIME_ZONE = "America/Chicago";
 
 // Stretches of the BA, eastbound order. Boundaries sit on the mainline between interchanges (not
-// on overpasses) so Google can't snap them to a cross street. Heading is eastbound travel; flip
-// 180° for westbound. Points come from Census TIGER/Line (data/tulsa-roads.json, scripts notes).
+// on overpasses) so Google can't snap them to a cross street. lat/lng (from Census TIGER/Line) is
+// the map position; east/west are the request waypoints.
+// Each boundary sits on that direction's own carriageway (the BA is divided), snapped to Google's
+// route line. A point on the wrong carriageway makes Google exit and turn around to reach it.
 export const STRETCH_BOUNDARIES = [
-  { name: "Yale", lat: 36.1157, lng: -95.91248, heading: 115 },
-  { name: "Memorial", lat: 36.1054, lng: -95.8797, heading: 113 },
-  { name: "129th E Ave", lat: 36.08532, lng: -95.82737, heading: 121 },
-  { name: "9th St", lat: 36.0638, lng: -95.77614, heading: 113 },
+  { name: "Yale", lat: 36.1157, lng: -95.91248, east: { lat: 36.11533, lng: -95.91296, heading: 136 }, west: { lat: 36.11571, lng: -95.91247, heading: 295 } },
+  { name: "Memorial", lat: 36.1054, lng: -95.8797, east: { lat: 36.10521, lng: -95.87981, heading: 115 }, west: { lat: 36.10538, lng: -95.87971, heading: 295 } },
+  { name: "129th E Ave", lat: 36.08532, lng: -95.82737, east: { lat: 36.08511, lng: -95.82753, heading: 121 }, west: { lat: 36.08528, lng: -95.8274, heading: 301 } },
+  { name: "9th St", lat: 36.0638, lng: -95.77614, east: { lat: 36.06365, lng: -95.77622, heading: 113 }, west: { lat: 36.06378, lng: -95.77615, heading: 293 } },
 ] as const;
 
 export const STRETCH_NAMES = ["Downtown", ...STRETCH_BOUNDARIES.map((b) => b.name), "Broken Arrow"] as const;

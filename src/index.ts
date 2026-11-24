@@ -137,6 +137,14 @@ export default {
       return json(await monitor(env).pollNow(direction), 0);
     }
 
+    if (url.pathname === "/admin/history" && request.method === "GET") {
+      if (!env.ADMIN_TOKEN || request.headers.get("authorization") !== `Bearer ${env.ADMIN_TOKEN}`) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      const days = Math.min(400, Math.max(1, Number(url.searchParams.get("days")) || 14));
+      return json(await monitor(env).historyReport(days), 0);
+    }
+
     return env.ASSETS.fetch(request);
   },
 

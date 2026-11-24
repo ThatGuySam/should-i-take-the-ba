@@ -34,7 +34,10 @@ export async function fetchGoogleRoutes(direction: Direction, apiKey: string, no
   const westbound = direction.id === "westbound";
   const boundaries = westbound ? [...STRETCH_BOUNDARIES].reverse() : [...STRETCH_BOUNDARIES];
   const intermediates = withStretches
-    ? boundaries.map((b) => ({ location: { latLng: { latitude: b.lat, longitude: b.lng }, heading: (b.heading + (westbound ? 180 : 0)) % 360 } }))
+    ? boundaries.map((b) => {
+        const p = westbound ? b.west : b.east;
+        return { location: { latLng: { latitude: p.lat, longitude: p.lng }, heading: p.heading } };
+      })
     : undefined;
   const provider = "google-routes";
   const response = await fetch(ROUTES_URL, {
