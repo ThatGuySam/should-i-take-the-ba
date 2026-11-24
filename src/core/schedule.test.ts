@@ -17,10 +17,10 @@ describe("schedule", () => {
     expect(activeWindow(localTime(central("2026-11-22T13:00:00Z")))).toBeNull();
   });
 
-  test("rush direction polls every five minutes, the other every thirty", () => {
-    const ticks = Array.from({ length: 12 }, (_, i) => new Date(Date.UTC(2026, 10, 23, 13, i * 5)));
-    expect(ticks.filter((t) => isDue("westbound", t, false)).length).toBe(12);
-    expect(ticks.filter((t) => isDue("eastbound", t, false)).length).toBe(2);
+  test("rush direction polls every five minutes, the other every two hours", () => {
+    const ticks = Array.from({ length: 24 }, (_, i) => new Date(Date.UTC(2026, 10, 23, 13, i * 5)));
+    expect(ticks.filter((t) => isDue("westbound", t, false)).length).toBe(24);
+    expect(ticks.filter((t) => isDue("eastbound", t, false)).length).toBe(1);
   });
 
   test("an open episode keeps five-minute polling after the window ends", () => {
@@ -29,8 +29,8 @@ describe("schedule", () => {
     expect(isDue("westbound", afterWindow, true)).toBe(true);
   });
 
-  test("overnight polls hourly", () => {
-    const ticks = Array.from({ length: 12 }, (_, i) => new Date(Date.UTC(2026, 10, 24, 8, i * 5)));
+  test("overnight polls every three hours", () => {
+    const ticks = Array.from({ length: 36 }, (_, i) => new Date(Date.UTC(2026, 10, 24, 7, i * 5)));
     expect(ticks.filter((t) => isDue("eastbound", t, false)).length).toBe(1);
   });
 });

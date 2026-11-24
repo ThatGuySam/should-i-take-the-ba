@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
-import { DIRECTIONS, type DirectionId, POLL, VERDICT } from "./config";
-import { activeWindow, isDue, localTime } from "./core/schedule";
+import { BUDGET, DIRECTIONS, type DirectionId, POLL, STRETCH_LEVELS, STRETCH_NAMES, VERDICT } from "./config";
+import { decodeLevels, encodeLevels, type Level, routeLevel, stretchLevel } from "./core/levels";
+import { activeWindow, intervalFor, isDue, localTime } from "./core/schedule";
 import { initialState, type Reading, step, type VerdictState } from "./core/verdict";
 import { type Env, publishEvent } from "./instagram";
 import { fetchTraffic } from "./traffic";
@@ -12,6 +13,9 @@ export type DirectionStatus = {
   answerSince: string;
   checkedAt: string | null;
   fresh: boolean;
+  level: Level | null;
+  /** Eastbound order: Downtown first. */
+  stretches: { from: string; to: string; level: Level }[] | null;
   lastError: string | null;
   lastAttemptAt: string | null;
 };
@@ -30,10 +34,12 @@ export type PostEvent = {
 };
 
 const DIRECTION_IDS = Object.keys(DIRECTIONS) as DirectionId[];
-const CHECK_RETENTION_HOURS = 24;
+const POLL_RETENTION_HOURS = 24;
+const CHECK_RETENTION_DAYS = 400;
 
 // Google's terms bar storing route durations, so nothing here persists a travel time. A check
-// records only when it ran and whether it worked; the verdict state holds Yes/No and timestamps.
+// records when it ran, whether it worked, and the site's own derived level (clear/slow/jammed)
+// for the whole route and each stretch. Those levels are the history used for trends.
 
 export class Monitor extends DurableObject<Env> {
   private sql: SqlStorage;
@@ -50,6 +56,8 @@ export class Monitor extends DurableObject<Env> {
         ok INTEGER NOT NULL, error TEXT, provider TEXT
       );
       CREATE INDEX IF NOT EXISTS checks_dir_at ON checks(direction, at);
+      CREATE TABLE IF NOT EXISTS usage (month TEXT PRIMARY KEY, calls INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS state (
         direction TEXT PRIMARY KEY, verdict TEXT NOT NULL, open_event TEXT
       );
@@ -59,6 +67,13 @@ export class Monitor extends DurableObject<Env> {
         updated_at TEXT NOT NULL
       );
     `);
+    for (const column of ["level TEXT", "stretch_levels TEXT"]) {
+      try {
+        this.sql.exec(`ALTER TABLE checks ADD COLUMN ${column}`);
+      } catch {
+        // already added
+      }
+    }
   }
 
   private loadState(direction: DirectionId): { verdict: VerdictState; openEvent: string | null } {
@@ -86,6 +101,7 @@ export class Monitor extends DurableObject<Env> {
     for (const direction of DIRECTION_IDS) {
       const { openEvent } = this.loadState(direction);
       if (!isDue(direction, now, openEvent !== null)) continue;
+      if (!this.withinBudget(direction, now)) continue;
       const slot = `${slotMinute}:${direction}`;
       const claimed = this.sql
         .exec("INSERT OR IGNORE INTO polls (slot, claimed_at) VALUES (?, ?) RETURNING slot", slot, new Date().toISOString())
@@ -103,17 +119,74 @@ export class Monitor extends DurableObject<Env> {
     return { polled, events };
   }
 
-  async poll(direction: DirectionId, now: Date): Promise<string | null> {
-    const result = await fetchTraffic(DIRECTIONS[direction], this.env, now);
+  private monthKey(now: Date) {
+    return localTime(now).date.slice(0, 7);
+  }
+
+  monthCalls(now = new Date()): number {
+    const row = this.sql.exec<{ calls: number }>("SELECT calls FROM usage WHERE month = ?", this.monthKey(now)).toArray()[0];
+    return row ? Number(row.calls) : 0;
+  }
+
+  private countCall(now: Date) {
     this.sql.exec(
-      "INSERT INTO checks (direction, at, ok, error, provider) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO usage (month, calls) VALUES (?, 1) ON CONFLICT(month) DO UPDATE SET calls = calls + 1",
+      this.monthKey(now),
+    );
+  }
+
+  /** Stay under Sam's cap: past the soft line only the rush direction in its window is polled. */
+  private withinBudget(direction: DirectionId, now: Date): boolean {
+    const used = this.monthCalls(now);
+    if (used >= BUDGET.monthlyCap) return false;
+    if (used >= BUDGET.rushOnlyAbove) return activeWindow(localTime(now))?.direction === direction;
+    return true;
+  }
+
+  private setting(key: string): string | null {
+    const row = this.sql.exec<{ value: string }>("SELECT value FROM settings WHERE key = ?", key).toArray()[0];
+    return row ? row.value : null;
+  }
+
+  private setSetting(key: string, value: string) {
+    this.sql.exec("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value);
+  }
+
+  async poll(direction: DirectionId, now: Date): Promise<string | null> {
+    const withStretches = this.setting("stretches") !== "off";
+    let result = await fetchTraffic(DIRECTIONS[direction], this.env, now, withStretches);
+    this.countCall(now);
+    if (!result.ok && withStretches && result.error.startsWith("stretch waypoints")) {
+      // A waypoint snapped off the BA. Turn stretches off until someone fixes the boundaries.
+      this.setSetting("stretches", "off");
+      result = await fetchTraffic(DIRECTIONS[direction], this.env, now, false);
+      this.countCall(now);
+    }
+    const level = result.ok ? routeLevel(result.reading, VERDICT) : null;
+    const stretchLevels = result.ok && result.stretches ? encodeLevels(result.stretches.map((r) => stretchLevel(r, STRETCH_LEVELS))) : null;
+    this.sql.exec(
+      "INSERT INTO checks (direction, at, ok, error, provider, level, stretch_levels) VALUES (?, ?, ?, ?, ?, ?, ?)",
       direction,
       result.ok ? result.reading.at : now.toISOString(),
       result.ok ? 1 : 0,
       result.ok ? null : result.error,
       result.provider,
+      level,
+      stretchLevels,
     );
     return result.ok ? this.applyReading(direction, result.reading, now) : null;
+  }
+
+  /** Derived levels for trend charts: one row per successful check. */
+  history(days = 14): { direction: DirectionId; at: string; level: Level | null; stretches: string | null }[] {
+    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    return this.sql
+      .exec<{ direction: string; at: string; level: string | null; stretch_levels: string | null }>(
+        "SELECT direction, at, level, stretch_levels FROM checks WHERE ok = 1 AND at >= ? ORDER BY at",
+        since,
+      )
+      .toArray()
+      .map((r) => ({ direction: r.direction as DirectionId, at: r.at, level: (r.level as Level) ?? null, stretches: r.stretch_levels }));
   }
 
   private applyReading(direction: DirectionId, reading: Reading, now: Date): string | null {
@@ -175,9 +248,10 @@ export class Monitor extends DurableObject<Env> {
   }
 
   private prune(now: Date) {
-    const cutoff = new Date(now.getTime() - CHECK_RETENTION_HOURS * 3_600_000).toISOString();
-    this.sql.exec("DELETE FROM checks WHERE at < ?", cutoff);
-    this.sql.exec("DELETE FROM polls WHERE claimed_at < ?", cutoff);
+    const pollCutoff = new Date(now.getTime() - POLL_RETENTION_HOURS * 3_600_000).toISOString();
+    const checkCutoff = new Date(now.getTime() - CHECK_RETENTION_DAYS * 86_400_000).toISOString();
+    this.sql.exec("DELETE FROM checks WHERE at < ?", checkCutoff);
+    this.sql.exec("DELETE FROM polls WHERE claimed_at < ?", pollCutoff);
   }
 
   getEvent(id: string): PostEvent | null {
@@ -210,10 +284,15 @@ export class Monitor extends DurableObject<Env> {
         .exec<Record<string, string | number | null>>("SELECT * FROM checks WHERE direction = ? ORDER BY at DESC LIMIT 1", direction)
         .toArray()[0];
       const good = this.sql
-        .exec<{ at: string }>("SELECT at FROM checks WHERE direction = ? AND ok = 1 ORDER BY at DESC LIMIT 1", direction)
+        .exec<{ at: string; level: string | null; stretch_levels: string | null }>(
+          "SELECT at, level, stretch_levels FROM checks WHERE direction = ? AND ok = 1 ORDER BY at DESC LIMIT 1",
+          direction,
+        )
         .toArray()[0];
       const checkedAt = good ? String(good.at) : null;
-      const maxAgeMin = activeWindow(localTime(new Date(now)))?.direction === direction ? POLL.maxReadingAgeMin : 75;
+      const local = localTime(new Date(now));
+      const maxAgeMin =
+        activeWindow(local)?.direction === direction ? POLL.maxReadingAgeMin : intervalFor(direction, local, false) + 30;
       const fresh = checkedAt !== null && now - Date.parse(checkedAt) <= maxAgeMin * 60_000;
       return {
         direction,
@@ -222,6 +301,8 @@ export class Monitor extends DurableObject<Env> {
         answerSince: verdict.answerSince,
         checkedAt,
         fresh,
+        level: fresh && good?.level ? (good.level as Level) : null,
+        stretches: fresh ? (decodeLevels(good?.stretch_levels)?.map((level, i) => ({ from: STRETCH_NAMES[i], to: STRETCH_NAMES[i + 1], level })) ?? null) : null,
         lastError: last && Number(last.ok) === 0 ? String(last.error) : null,
         lastAttemptAt: last ? String(last.at) : null,
       };

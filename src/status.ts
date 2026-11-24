@@ -13,6 +13,9 @@ export type PublicStatus = {
   summary: string;
   checkedAt: string | null;
   fresh: boolean;
+  /** The site's own derived level for the latest check, and per stretch (eastbound order). */
+  level: DirectionStatus["level"];
+  stretches: DirectionStatus["stretches"];
   answerSince: string | null;
   source: string;
   monitoring: { lastAttemptAt: string | null; lastError: string | null };
@@ -57,6 +60,8 @@ export function toPublic(s: DirectionStatus, origin: string): PublicStatus {
     summary,
     checkedAt: s.checkedAt,
     fresh: s.fresh,
+    level: s.level,
+    stretches: s.stretches,
     answerSince: Date.parse(s.answerSince) > 0 ? s.answerSince : null,
     source: "Based on traffic from Google Maps Platform",
     monitoring: { lastAttemptAt: s.lastAttemptAt, lastError: s.lastError },

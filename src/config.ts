@@ -47,8 +47,8 @@ export const RUSH_WINDOWS: RushWindow[] = [
 
 export const POLL = {
   rushMin: 5,
-  shoulderMin: 30,
-  overnightMin: 60,
+  shoulderMin: 120,
+  overnightMin: 180,
   overnightStartHour: 21,
   overnightEndHour: 6,
   maxReadingAgeMin: 15,
@@ -67,3 +67,21 @@ export const VERDICT: VerdictConfig = {
 };
 
 export const TIME_ZONE = "America/Chicago";
+
+// Stretches of the BA, eastbound order. Boundaries sit on the mainline between interchanges (not
+// on overpasses) so Google can't snap them to a cross street. Heading is eastbound travel; flip
+// 180° for westbound. Points come from Census TIGER/Line (data/tulsa-roads.json, scripts notes).
+export const STRETCH_BOUNDARIES = [
+  { name: "Yale", lat: 36.1157, lng: -95.91248, heading: 115 },
+  { name: "Memorial", lat: 36.1054, lng: -95.8797, heading: 113 },
+  { name: "129th E Ave", lat: 36.08532, lng: -95.82737, heading: 121 },
+  { name: "9th St", lat: 36.0638, lng: -95.77614, heading: 113 },
+] as const;
+
+export const STRETCH_NAMES = ["Downtown", ...STRETCH_BOUNDARIES.map((b) => b.name), "Broken Arrow"] as const;
+
+/** A stretch is slow or jammed by its own delay against Google's no-traffic time. */
+export const STRETCH_LEVELS = { slowRatio: 0.2, slowMinSec: 30, jamRatio: 0.5, jamMinSec: 60 };
+
+/** Google traffic requests per calendar month (Central). Free tier is 5,000; Sam's cap is 50%. */
+export const BUDGET = { monthlyCap: 2500, rushOnlyAbove: 2400 };

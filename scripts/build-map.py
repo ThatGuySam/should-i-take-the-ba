@@ -107,6 +107,12 @@ water_d = d_attr(water, 1.5, close=True)
     "</svg>\n"
 )
 
+# Split the drawn route into stretches at the boundaries in src/config.ts (STRETCH_BOUNDARIES).
+BOUNDARIES = [(-95.91248, 36.1157), (-95.8797, 36.1054), (-95.82737, 36.08532), (-95.77614, 36.0638)]
+cuts = [min(range(len(route)), key=lambda i: dist(route[i], b)) for b in BOUNDARIES]
+edges = [0] + cuts + [len(route) - 1]
+stretch_d = [d_attr([route[edges[i] : edges[i + 1] + 1]], 0.6, 1) for i in range(len(edges) - 1)]
+
 rx = [xy(*p) for p in route]
 xs, ys = [p[0] for p in rx], [p[1] for p in rx]
 data = {
@@ -114,6 +120,7 @@ data = {
     "height": H,
     "highways": d_attr(highways, 0.8, 1),
     "route": d_attr([route], 0.6, 1),
+    "stretches": stretch_d,
     "downtown": [round(v, 1) for v in xy(*DOWNTOWN)],
     "brokenArrow": [round(v, 1) for v in xy(*BROKEN_ARROW)],
     "corridor": [round(min(xs), 1), round(min(ys), 1), round(max(xs), 1), round(max(ys), 1)],
