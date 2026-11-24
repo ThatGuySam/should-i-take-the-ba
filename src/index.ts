@@ -15,7 +15,7 @@ export { Monitor } from "./monitor";
 const monitor = (env: Env) => env.MONITOR.get(env.MONITOR.idFromName("ba"));
 
 async function publicStatuses(env: Env, requested?: string | null) {
-  const all = (await monitor(env).status()).map(toPublic);
+  const all = (await monitor(env).status()).map((s) => toPublic(s, env.PUBLIC_ORIGIN));
   const direction: DirectionId =
     requested === "eastbound" || requested === "westbound" ? requested : defaultDirection();
   const recommended = all.find((s) => s.direction === direction) as PublicStatus;

@@ -88,7 +88,7 @@ export function agentsPage(origin: string) {
   const site = origin.replace(/^https?:\/\//, "");
   const mcp = `${origin}/mcp`;
   const claudeUrl = `https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=${encodeURIComponent("Should I take the BA")}&connectorUrl=${encodeURIComponent(mcp)}`;
-  const daily = `Every weekday at 7:00 AM and 4:30 PM, check ${origin}/api/v1/status and tell me whether I should take the BA (Broken Arrow Expressway in Tulsa). If it says No, tell me it's backed up and suggest another way, like the Creek Turnpike or Memorial and 71st. Always include the link ${origin} so I can see the map.`;
+  const daily = `Every weekday at 7:00 AM and 4:30 PM Tulsa time, check ${origin}/api/v1/status and tell me whether I should take the BA (Broken Arrow Expressway in Tulsa), with the time it was checked. If it says No, tell me it's backed up and suggest another way, like the Creek Turnpike or Memorial and 71st. If there's no check from the last 15 minutes, say the status is unavailable. End with the link ${origin} labeled "Recheck live BA traffic before leaving."`;
   const now = `Should I take the BA right now? Check ${origin}/api/v1/status and include the link ${origin} in your answer.`;
   const copy = (id: string, text: string, label: string) =>
     `<pre id="${id}">${esc(text)}</pre><button class="btn primary" onclick="navigator.clipboard.writeText(document.getElementById('${id}').textContent);this.textContent='Copied'">${label}</button>`;

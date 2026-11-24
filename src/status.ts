@@ -4,6 +4,8 @@ import type { DirectionStatus } from "./monitor";
 
 export type PublicStatus = {
   question: string;
+  title: string;
+  url: string;
   direction: DirectionId;
   route: { from: string; to: string; label: string };
   answer: "yes" | "no" | "unknown";
@@ -34,7 +36,7 @@ export function headline(direction: DirectionId, answer: "yes" | "no" | "unknown
   return `No current traffic check for ${route}.`;
 }
 
-export function toPublic(s: DirectionStatus): PublicStatus {
+export function toPublic(s: DirectionStatus, origin: string): PublicStatus {
   const d = DIRECTIONS[s.direction];
   const label = d.label.toLowerCase();
   let summary = "No current traffic check. Check back soon.";
@@ -46,6 +48,8 @@ export function toPublic(s: DirectionStatus): PublicStatus {
   }
   return {
     question: "Should I take the BA?",
+    title: `Should I take the BA? ${d.label}, ${d.from} to ${d.to}`,
+    url: `${origin}/?direction=${s.direction}`,
     direction: s.direction,
     route: { from: d.from, to: d.to, label: d.label },
     answer: s.answer,
