@@ -39,7 +39,7 @@ export function mapLinks(direction: DirectionId) {
   const a = `${d.origin.lat},${d.origin.lng}`;
   const b = `${d.destination.lat},${d.destination.lng}`;
   return {
-    apple: `https://maps.apple.com/?saddr=${a}&daddr=${b}&dirflg=d`,
+    apple: `https://maps.apple.com/directions?source=${a}&destination=${b}&mode=driving`,
     google: `https://www.google.com/maps/dir/?api=1&origin=${a}&destination=${b}&travelmode=driving`,
   };
 }
@@ -79,6 +79,7 @@ a{color:inherit}
 .sentence{font-size:clamp(1.2rem,3.2vw,1.9rem);font-weight:700;line-height:1.25;margin:.75rem auto 0;max-width:36rem;text-wrap:balance}
 .jams{margin:.6rem auto 0;font-size:1rem;font-weight:700;max-width:34rem;text-wrap:balance}
 .jams:empty{display:none}
+.saved{margin:.5rem 0 0;font-size:.8rem;font-weight:600;color:var(--meta)}.saved[hidden]{display:none}.saved button{font:inherit;color:inherit;background:none;border:0;padding:.4rem .2rem;text-decoration:underline;cursor:pointer}
 .meta.source{margin-top:.2rem;font-size:.82rem;opacity:.85}
 .meta{margin:.85rem auto 0;font-size:.95rem;font-weight:600;color:var(--meta)}
 .links{margin:1.25rem 0 0;display:flex;flex-wrap:wrap;justify-content:center;gap:0 1.25rem}
@@ -149,9 +150,12 @@ function paint(v,animate){
 document.querySelectorAll('.toggle a').forEach(a=>a.addEventListener('click',e=>{
  e.preventDefault();const to=a.dataset.to;if(to===current)return;current=to;
  try{localStorage.setItem('ba:dir:'+half(),to)}catch{}
+ saved.hidden=true;
  history.replaceState(null,'','?direction='+to);paint(data[to],true);
 }));
-{const r=remembered();if(!new URLSearchParams(location.search).has('direction')&&r&&r!==current&&data[r]){current=r;paint(data[r],false)}}
+const def=current,saved=$('.saved');
+{const r=remembered();if(!new URLSearchParams(location.search).has('direction')&&r&&r!==current&&data[r]){current=r;paint(data[r],false);saved.firstChild.textContent='Your saved '+(half()==='am'?'morning':'afternoon')+' direction · ';saved.hidden=false}}
+saved.querySelector('button').addEventListener('click',()=>{try{localStorage.removeItem('ba:dir:'+half())}catch{}saved.hidden=true;if(current!==def){current=def;paint(data[def],true)}});
 $('.meta [data-ago]').textContent=status(data[current]);
 setInterval(()=>{$('.meta [data-ago]').textContent=status(data[current])},30000);
 async function refresh(){try{const r=await fetch('/api/v1/status',{cache:'no-store'});const j=await r.json();for(const s of j.directions)data[s.direction]={direction:s.direction,answer:s.answer,sentence:s.headline,checkedAt:s.checkedAt,since:s.answer==='unknown'?null:s.answerSince,next:s.nextCheckAt,stretches:s.stretches};paint(data[current],false)}catch{}}
@@ -214,6 +218,7 @@ ${MAP.stretches.map((d, k) => `<path class="road flow"${levelAttr(k)} d="${d}"/>
 <div class="focus"></div>
 <main class="hero" data-direction="${status.direction}">
 <nav class="toggle" aria-label="Direction" style="--i:${i}"><span class="thumb"></span>${tab("westbound")}${tab("eastbound")}</nav>
+<p class="saved" hidden><span></span><button type="button">Use time-of-day default</button></p>
 <div class="answer" aria-live="polite">
 <h1 class="q">Should I take the BA?</h1>
 <p class="word swap"${t.word.length > 3 ? " data-long" : ""}>${t.word}</p>
