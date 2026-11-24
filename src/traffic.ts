@@ -93,7 +93,7 @@ export async function fetchGoogleRoutes(direction: Direction, apiKey: string, no
 type DirectionsResponse = {
   status?: string;
   error_message?: string;
-  routes?: Array<{ legs?: Array<{ duration?: { value?: number }; duration_in_traffic?: { value?: number }; distance?: { value?: number } }> }>;
+  routes?: Array<{ summary?: string; legs?: Array<{ duration?: { value?: number }; duration_in_traffic?: { value?: number }; distance?: { value?: number } }> }>;
 };
 
 // Directions (Legacy) still works for projects that already had it enabled, which includes the
@@ -113,6 +113,10 @@ export async function fetchGoogleDirections(direction: Direction, apiKey: string
   if (!response.ok || body.status !== "OK") {
     return { ok: false, provider, error: `HTTP ${response.status}: ${body.status ?? "unknown"}` };
   }
+  // Endpoints alone don't force the BA. Google names it "OK-51" (shared with US-64); a route
+  // without it is some other road, so it says nothing about the BA.
+  const summary = body.routes?.[0]?.summary ?? "";
+  if (!/\b51\b/.test(summary)) return { ok: false, provider, error: `route avoided the BA (${summary || "no summary"})` };
   const leg = body.routes?.[0]?.legs?.[0];
   const durationSec = leg?.duration_in_traffic?.value ?? Number.NaN;
   const staticDurationSec = leg?.duration?.value ?? Number.NaN;
