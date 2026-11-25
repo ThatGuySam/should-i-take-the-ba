@@ -36,7 +36,7 @@ const tail = "\n\nLive answer: shoulditaketheba.com\nAutomated traffic update.";
 describe("facts", () => {
   test("No facts", () => {
     expect(no.detectedAt).toBe("5:12 PM");
-    expect(no.estimate).toEqual({ episodes: 12, withinMin: 45, clearByLocal: "5:57 PM" });
+    expect(no.estimate).toEqual({ episodes: 12, withinMin: 45 });
     expect(no.stretches).toEqual(["Yale to Memorial (jammed)"]);
     expect(no.imageUrl).toBe(`${ORIGIN}/cards/e/${noEvent.id}.jpg`);
     expect(no.noDetectedAt).toBeNull();
@@ -59,8 +59,16 @@ describe("facts", () => {
 });
 
 describe("caption validator", () => {
+  test("rejects clock-time clearing, missing hedge, causes and route advice", () => {
+    const p1 = validateCaption(`No. Backed up at 5:12 PM. Usually clear by 5:57 PM.${tail}`, no);
+    expect(p1).toContain("time 5:57 not in facts");
+    expect(p1).toContain("predicts a clock time for clearing");
+    expect(p1).toContain('estimate without "Timing varies."');
+    const p2 = validateCaption(`No. A crash backed up the BA at 5:12 PM. Take I-44 instead.${tail}`, no);
+    expect(p2).toContain("adds a cause or route advice");
+  });
   test("accepts a caption built from the facts", () => {
-    const text = `No. The BA eastbound started backing up at 5:12 PM. Past jams usually cleared within 45 min, around 5:57 PM.${tail}`;
+    const text = `No. The BA eastbound started backing up at 5:12 PM. Past jams usually cleared within 45 min of being detected. Timing varies.${tail}`;
     expect(validateCaption(text, no)).toEqual([]);
   });
   test("accepts hours equal to a fact and Yes jam length", () => {

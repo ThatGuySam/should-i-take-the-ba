@@ -40,7 +40,7 @@ export type PostFacts = {
   clearedSince: string | null;
   jamMinutes: number | null;
   /** No only, null without enough history: past jams in this window usually cleared within this. */
-  estimate: { episodes: number; withinMin: number; clearByLocal: string } | null;
+  estimate: { episodes: number; withinMin: number } | null;
   /** Stretches that were slow or jammed at the time, e.g. "Yale to Memorial (jammed)". */
   stretches: string[] | null;
   imageUrl: string;
@@ -58,7 +58,6 @@ export const MAX_CAPTION = 600;
 const fmt = (iso: string, opts: Intl.DateTimeFormatOptions) =>
   new Date(iso).toLocaleString("en-US", { timeZone: TIME_ZONE, ...opts }).replace(/[\u202f\u00a0]/g, " ");
 export const clock = (iso: string) => fmt(iso, { hour: "numeric", minute: "2-digit" });
-const addMin = (iso: string, min: number) => new Date(Date.parse(iso) + min * 60_000).toISOString();
 
 export function buildFacts(e: FactsInput, origin: string): PostFacts {
   const d = DIRECTIONS[e.direction];
@@ -77,7 +76,7 @@ export function buildFacts(e: FactsInput, origin: string): PostFacts {
     noDetectedAt: yes && x.noAt ? clock(x.noAt) : null,
     clearedSince: yes && x.since ? clock(x.since) : null,
     jamMinutes: yes && x.noAt && x.since ? Math.round((Date.parse(x.since) - Date.parse(x.noAt)) / 60_000) : null,
-    estimate: !yes && x.estimate ? { ...x.estimate, clearByLocal: clock(addMin(e.at, x.estimate.withinMin)) } : null,
+    estimate: !yes && x.estimate ? { ...x.estimate } : null,
     stretches: x.stretches?.filter((s) => s.level !== "clear").map((s) => `${s.from} to ${s.to} (${s.level})`) ?? null,
     imageUrl: `${origin}/cards/e/${e.id}.jpg`,
     status: e.status,
@@ -93,7 +92,7 @@ export function templateCaption(f: Omit<PostFacts, "templateCaption" | "altText"
     f.answer === "no"
       ? [
           `No. Traffic is backing up on ${route} as of ${f.detectedAt} Central.`,
-          f.estimate ? `On past weekdays, backups like this usually cleared within ${f.estimate.withinMin} min (around ${f.estimate.clearByLocal}).` : "",
+          f.estimate ? `On past weekdays, backups like this usually cleared within ${f.estimate.withinMin} min of being detected. Timing varies.` : "",
         ]
       : [
           `Yes. ${route[0].toUpperCase()}${route.slice(1)} is moving again as of ${f.detectedAt} Central.`,
@@ -115,6 +114,8 @@ const MINUTES = /\b(\d+)\s*-?\s*(?:min|mins|minutes?)\b/gi;
 const HOURS = /\b(\d+(?:\.\d+)?)\s*-?\s*(?:hr|hrs|hours?)\b/gi;
 
 /** Problems with a drafted caption; empty means it may be posted. */
+const CAUSE_OR_ROUTE = /\b(crash|accident|wreck|collision|construction|lane closure|weather|rain|snow|ice|fog|detour|alternate route|instead|take (?:the )?(?:I-?44|I-?244|US-?169|169|44|244|51st|71st|Riverside|Memorial)|exit at)\b/i;
+
 export function validateCaption(text: string, f: PostFacts): string[] {
   const problems: string[] = [];
   const source = JSON.stringify({ ...f, templateCaption: undefined, caption: undefined });
@@ -134,5 +135,8 @@ export function validateCaption(text: string, f: PostFacts): string[] {
   if ((text.match(/\p{Extended_Pictographic}/gu) ?? []).length > 2) problems.push("more than 2 emoji");
   if (/\b(guarantee|promise)|\bwill (?:be )?(?:clear|moving|gone)/i.test(text)) problems.push("makes a promise");
   if (!f.estimate && /\b(usually|typically)\b/i.test(text)) problems.push("gives an estimate without one in the facts");
+  if (f.estimate && /\b(usually|typically)\b/i.test(text) && !/timing varies/i.test(text)) problems.push('estimate without "Timing varies."');
+  if (/\b(clear|open|moving)\s+(again\s+)?by\b/i.test(text)) problems.push("predicts a clock time for clearing");
+  if (CAUSE_OR_ROUTE.test(text)) problems.push("adds a cause or route advice");
   return problems;
 }
