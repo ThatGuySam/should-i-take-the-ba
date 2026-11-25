@@ -8,11 +8,18 @@ follow this file.
 
 ## How posting normally works
 
-The website decides and posts on its own. Every 5 minutes during weekday rush hours it
-checks traffic. When a backup is confirmed it records a **No** event, and when the backup
-has cleared it records a **Yes** event. Each event has a fixed image at
-`/cards/e/<event-id>.jpg` and a fixed caption. When `INSTAGRAM_MODE` is `live`, the site
-publishes the event itself through the Instagram API.
+The website decides what to post. Every 5 minutes during weekday rush hours it checks
+traffic. When a backup is confirmed it records a **No** event. When the backup has stayed
+clear for 20 minutes (or the rush window ends) it records a **Yes** event. A rush posts at
+most one No and one Yes, and a quiet rush posts nothing. Each event has a fixed image at
+`/cards/e/<event-id>.jpg`.
+
+Who publishes depends on `INSTAGRAM_MODE`:
+- `local`: a runner on Sam's computer writes a slightly different caption each time and
+  publishes it. Once posted, the event's `caption` is the one actually used
+  (`captionPosted: true`).
+- `live`: the site publishes by itself with its plain template caption.
+- `dry-run`: nothing is posted.
 
 You are the fallback. You never decide whether traffic is bad. You only work from events
 the site has already recorded.
@@ -25,6 +32,9 @@ the site has already recorded.
    - `published`: the site posted it. Give the time.
    - `dry-run`: the site is in test mode and posted nothing. This is expected until Sam
      connects the account.
+   - `pending` or `claimed`: waiting for the runner (local mode). Normal for a few minutes.
+   - `stale` or `superseded`: it waited too long or the jam cleared first, so it was
+     dropped on purpose. Not an error.
    - `held` or `failed`: tell Sam the `error` text. Do not retry on your own.
 3. If Sam asks for the current answer, fetch `/api/v1/status` and report
    `recommended.answer` and `recommended.summary` word for word.
@@ -35,6 +45,8 @@ Only when Sam names the event or says "post the latest BA event":
 
 1. Fetch `/api/v1/events` and find the event. Stop and tell Sam if:
    - its `status` is `published` (it is already on Instagram), or
+   - its `status` is `pending`, `claimed` or `container` while the mode is `local` (the
+     runner may be posting it right now), or
    - it is more than 30 minutes old and a newer event exists for the same direction, or
    - you are not sure which event Sam means.
 2. Post exactly one single-image feed post to the Should I take the BA? account:

@@ -1,0 +1,12 @@
+# Every 2 minutes, weekdays 6:00–19:58 Central. Not enabled by default.
+[Unit]
+Description=Run the Should I take the BA? Instagram runner every 2 minutes on weekdays
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 06..19:00/2:00 America/Chicago
+AccuracySec=15s
+Persistent=false
+Unit=should-i-take-the-ba-ig.service
+
+[Install]
+WantedBy=timers.target

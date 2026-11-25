@@ -1,0 +1,18 @@
+# Instagram runner for Should I take the BA? (user unit). See docs/instagram-posting.md.
+# Not installed by default. Install with the steps in the doc after reviewing.
+[Unit]
+Description=Should I take the BA? Instagram runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Code/should-i-take-the-ba
+# mise shims for bun and claude. Adjust if your install differs.
+Environment=PATH=%h/.local/share/mise/shims:%h/.local/bin:/usr/local/bin:/usr/bin
+ExecStart=%h/.local/share/mise/shims/bun scripts/ig-runner.ts --once
+Nice=10
+IOSchedulingClass=idle
+MemoryMax=1G
+TimeoutStartSec=4min
+# While paused the runner exits 2, so `systemctl --user status` shows the unit as failed.
