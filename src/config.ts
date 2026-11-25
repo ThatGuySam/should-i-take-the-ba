@@ -100,3 +100,19 @@ export const STRETCH_LEVELS = { slowRatio: 0.2, slowMinSec: 30, jamRatio: 0.5, j
 
 /** Google traffic requests per calendar month (Central). Free tier is 5,000; Sam's cap is 50%. */
 export const BUDGET = { monthlyCap: 2500, rushOnlyAbove: 2400 };
+
+// Instagram posting rules (src/core/posting.ts). One No and at most one Yes per rush window and
+// direction. The Yes waits until Yes has held for settleMin or the window has ended. Caps apply in
+// every mode, so dry-run shows what live would have posted.
+export const POSTING = {
+  settleMin: 20,
+  maxPer24h: 4,
+  startHour: 6,
+  endHour: 20,
+  staleMin: 30,
+  /** A claim by the local runner expires after this, so a crashed run can be reconciled. */
+  claimMin: 10,
+  /** An episode still open this long after its No is closed without a Yes (stuck state guard). */
+  closeAfterMin: 360,
+  estimate: { days: 90, minEpisodes: 8, percentile: 90, roundUpMin: 15, maxGapMin: 20 },
+};

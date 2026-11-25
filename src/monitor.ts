@@ -1,7 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
-import { ADAPTIVE, BUDGET, DIRECTIONS, type DirectionId, POLL, STRETCH_LEVELS, STRETCH_NAMES, VERDICT } from "./config";
+import { ADAPTIVE, BUDGET, DIRECTIONS, type DirectionId, POLL, POSTING, RUSH_WINDOWS, STRETCH_LEVELS, STRETCH_NAMES, VERDICT } from "./config";
 import { decodeLevels, encodeLevels, type Level, routeLevel, stretchLevel } from "./core/levels";
 import { type AdaptiveState, adaptiveAfter, idleAdaptive, planCheck, policyLabel, type Reason } from "./core/adaptive";
+import type { PostExtra } from "./core/caption";
+import { clearEstimate } from "./core/estimate";
+import { advance, type Episode, expired, gate, type PostAction } from "./core/posting";
 import { activeWindow, intervalFor, localTime } from "./core/schedule";
 import { initialState, type Reading, step, type VerdictState } from "./core/verdict";
 import { type Env, publishEvent } from "./instagram";
@@ -33,7 +36,16 @@ export type PostEvent = {
   mediaId: string | null;
   error: string | null;
   updatedAt: string;
+  /** Yes events: when Yes was first seen (the event's `at` is when the Yes settled). */
+  since: string | null;
+  /** The caption actually posted, once the local runner reports it. */
+  caption: string | null;
+  claimedAt: string | null;
+  extra: PostExtra | null;
 };
+
+export type PostResult = { status: string; containerId?: string; mediaId?: string; error?: string; caption?: string };
+export const RESULT_STATUSES = ["published", "dry-run", "container", "failed", "held", "pending", "stale"];
 
 const DIRECTION_IDS = Object.keys(DIRECTIONS) as DirectionId[];
 const POLL_RETENTION_HOURS = 24;
@@ -72,30 +84,41 @@ export class Monitor extends DurableObject<Env> {
         window TEXT NOT NULL, status TEXT NOT NULL, container_id TEXT, media_id TEXT, error TEXT,
         updated_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS post_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, direction TEXT NOT NULL,
+        episode TEXT NOT NULL, kind TEXT NOT NULL, detail TEXT
+      );
     `);
-    for (const column of ["level TEXT", "stretch_levels TEXT", "reason TEXT", "answer TEXT", "policy TEXT"]) {
+    const columns = [
+      ...["level TEXT", "stretch_levels TEXT", "reason TEXT", "answer TEXT", "policy TEXT"].map((c) => `checks ADD COLUMN ${c}`),
+      "state ADD COLUMN yes_since TEXT",
+      ...["since TEXT", "caption TEXT", "claimed_at TEXT", "extra TEXT"].map((c) => `posts ADD COLUMN ${c}`),
+    ];
+    for (const column of columns) {
       try {
-        this.sql.exec(`ALTER TABLE checks ADD COLUMN ${column}`);
+        this.sql.exec(`ALTER TABLE ${column}`);
       } catch {
         // already added
       }
     }
   }
 
-  private loadState(direction: DirectionId): { verdict: VerdictState; openEvent: string | null } {
+  private loadState(direction: DirectionId): { verdict: VerdictState; openEvent: string | null; episode: Episode | null } {
     const row = this.sql
-      .exec<{ verdict: string; open_event: string | null }>("SELECT verdict, open_event FROM state WHERE direction = ?", direction)
+      .exec<{ verdict: string; open_event: string | null; yes_since: string | null }>("SELECT verdict, open_event, yes_since FROM state WHERE direction = ?", direction)
       .toArray()[0];
-    if (!row) return { verdict: initialState(new Date(0).toISOString()), openEvent: null };
-    return { verdict: JSON.parse(row.verdict), openEvent: row.open_event };
+    if (!row) return { verdict: initialState(new Date(0).toISOString()), openEvent: null, episode: null };
+    const episode = row.open_event ? { noId: row.open_event, yesSince: row.yes_since } : null;
+    return { verdict: JSON.parse(row.verdict), openEvent: row.open_event, episode };
   }
 
-  private saveState(direction: DirectionId, verdict: VerdictState, openEvent: string | null) {
+  private saveState(direction: DirectionId, verdict: VerdictState, episode: Episode | null) {
     this.sql.exec(
-      "INSERT INTO state (direction, verdict, open_event) VALUES (?, ?, ?) ON CONFLICT(direction) DO UPDATE SET verdict = excluded.verdict, open_event = excluded.open_event",
+      "INSERT INTO state (direction, verdict, open_event, yes_since) VALUES (?, ?, ?, ?) ON CONFLICT(direction) DO UPDATE SET verdict = excluded.verdict, open_event = excluded.open_event, yes_since = excluded.yes_since",
       direction,
       JSON.stringify(verdict),
-      openEvent,
+      episode?.noId ?? null,
+      episode?.yesSince ?? null,
     );
   }
 
@@ -121,7 +144,7 @@ export class Monitor extends DurableObject<Env> {
         await this.dispatch(event);
       }
     }
-    for (const e of this.events(20)) if (e.status === "container") await this.dispatch(e.id);
+    for (const e of this.events(20)) if (e.status === "container" || e.status === "pending") await this.dispatch(e.id, now);
     await this.expireWatches(now);
     this.prune(now);
     return { polled, events };
@@ -198,7 +221,8 @@ export class Monitor extends DurableObject<Env> {
     if (!result.ok) return null;
     const checkId = this.sql.exec<{ id: number }>("SELECT last_insert_rowid() AS id").one().id;
     const before = this.loadState(direction).verdict.answer;
-    const event = this.applyReading(direction, result.reading, now);
+    const stretches = result.stretches ? result.stretches.map((r, i) => ({ from: STRETCH_NAMES[i], to: STRETCH_NAMES[i + 1], level: stretchLevel(r, STRETCH_LEVELS) })) : null;
+    const event = this.applyReading(direction, result.reading, now, stretches);
     const after = this.loadState(direction).verdict.answer;
     this.sql.exec("UPDATE checks SET answer = ? WHERE id = ?", after, checkId);
     if (level) {
@@ -284,62 +308,168 @@ export class Monitor extends DurableObject<Env> {
       .map((r) => ({ direction: r.direction as DirectionId, at: r.at, level: (r.level as Level) ?? null, stretches: r.stretch_levels }));
   }
 
-  private applyReading(direction: DirectionId, reading: Reading, now: Date): string | null {
-    const { verdict, openEvent } = this.loadState(direction);
+  private applyReading(direction: DirectionId, reading: Reading, now: Date, stretches: PostExtra["stretches"]): string | null {
+    const { verdict, episode } = this.loadState(direction);
     const out = step(verdict, reading, VERDICT);
-    let nextOpen = openEvent;
+    const local = localTime(now);
+    const actions: PostAction[] = [];
+    let open = episode;
+    const opener = open ? this.getEvent(open.noId) : null;
+    if (open && opener && expired(opener.at, now, POSTING)) {
+      if (opener.status === "pending") actions.push({ type: "supersede", id: open.noId });
+      actions.push({ type: "log", kind: "closed-expired", episode: open.noId });
+      open = null;
+    }
+    const next = advance(
+      {
+        episode: open,
+        direction,
+        answer: out.state.answer,
+        transition: out.transition?.to ?? null,
+        at: reading.at,
+        local,
+        window: activeWindow(local),
+        noStatus: open ? (opener?.status ?? null) : null,
+        exists: (id) => this.getEvent(id) !== null,
+      },
+      POSTING,
+    );
     let created: string | null = null;
-
-    if (out.transition) {
-      const local = localTime(now);
-      const window = activeWindow(local);
-      if (out.transition.to === "no" && window?.direction === direction) {
-        const id = `${local.date}-${window.id}-${direction}-no`;
-        if (this.insertEvent(id, direction, "no", reading.at, window.id)) {
-          created = id;
-          nextOpen = id;
-        }
-      } else if (out.transition.to === "yes" && openEvent) {
-        const opener = this.getEvent(openEvent);
-        const id = openEvent.replace(/-no$/, "-yes");
-        if (opener && (opener.status === "published" || opener.status === "dry-run") && this.insertEvent(id, direction, "yes", reading.at, opener.window)) {
-          created = id;
-        }
-        nextOpen = null;
+    for (const a of [...actions, ...next.actions]) {
+      if (a.type === "create") {
+        const extra: PostExtra =
+          a.answer === "no"
+            ? { estimate: this.estimateFor(direction, local, a.at), stretches }
+            : { noAt: opener?.at, since: a.since };
+        if (this.insertEvent(a.id, direction, a.answer, a.at, a.id.split("-")[3], extra, a.answer === "yes" ? a.since : null)) created = a.id;
+      } else if (a.type === "supersede") {
+        this.sql.exec(
+          "UPDATE posts SET status = 'superseded', error = 'cleared before it was posted', updated_at = ? WHERE id = ? AND status = 'pending'",
+          now.toISOString(),
+          a.id,
+        );
+      } else {
+        this.sql.exec("INSERT INTO post_log (at, direction, episode, kind, detail) VALUES (?, ?, ?, ?, ?)", now.toISOString(), direction, a.episode, a.kind, a.detail ?? null);
       }
     }
-    this.saveState(direction, out.state, nextOpen);
+    this.saveState(direction, out.state, next.episode);
     return created;
   }
 
-  private insertEvent(id: string, direction: DirectionId, answer: "yes" | "no", at: string, window: string) {
+  /** Cautious "usually clears within" for a new No, from this window's past jams (null with too few). */
+  private estimateFor(direction: DirectionId, local: ReturnType<typeof localTime>, before: string) {
+    const window = activeWindow(local) ?? RUSH_WINDOWS.find((w) => w.direction === direction);
+    if (!window) return null;
+    const since = new Date(Date.parse(before) - POSTING.estimate.days * 86_400_000).toISOString();
+    const rows = this.sql
+      .exec<{ at: string; ok: number; answer: string | null }>(
+        "SELECT at, ok, answer FROM checks WHERE direction = ? AND at >= ? AND at < ? ORDER BY at",
+        direction,
+        since,
+        before,
+      )
+      .toArray();
+    return clearEstimate(rows, window, POSTING.estimate);
+  }
+
+  private insertEvent(id: string, direction: DirectionId, answer: "yes" | "no", at: string, window: string, extra: PostExtra, since: string | null) {
     const rows = this.sql
       .exec(
-        "INSERT OR IGNORE INTO posts (id, direction, answer, at, window, status, updated_at) VALUES (?, ?, ?, ?, ?, 'pending', ?) RETURNING id",
+        "INSERT OR IGNORE INTO posts (id, direction, answer, at, window, status, updated_at, since, extra) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?) RETURNING id",
         id,
         direction,
         answer,
         at,
         window,
         new Date().toISOString(),
+        since,
+        JSON.stringify(extra),
       )
       .toArray();
     return rows.length > 0;
   }
 
-  private async dispatch(id: string) {
-    const event = this.getEvent(id);
-    if (!event || (event.status !== "pending" && event.status !== "container")) return;
-    const update = await publishEvent(event, this.env);
+  private postedSince(now: Date): number {
+    const since = new Date(now.getTime() - 86_400_000).toISOString();
+    return Number(
+      this.sql
+        .exec<{ n: number }>("SELECT COUNT(*) AS n FROM posts WHERE status IN ('published', 'dry-run', 'claimed', 'container') AND updated_at >= ?", since)
+        .one().n,
+    );
+  }
+
+  /** Apply the posting caps to a pending event. A stale event is marked and never posted. */
+  private admit(event: PostEvent, now: Date): boolean {
+    const g = gate(event, now, localTime(now), this.postedSince(now), POSTING);
+    if (!g.ok && g.drop) this.setResult(event.id, { status: "stale", error: g.reason });
+    return g.ok;
+  }
+
+  private setResult(id: string, r: PostResult) {
     this.sql.exec(
-      "UPDATE posts SET status = ?, container_id = ?, media_id = ?, error = ?, updated_at = ? WHERE id = ?",
-      update.status,
-      update.containerId ?? null,
-      update.mediaId ?? null,
-      update.error ?? null,
+      "UPDATE posts SET status = ?, container_id = COALESCE(?, container_id), media_id = COALESCE(?, media_id), error = ?, caption = COALESCE(?, caption), claimed_at = CASE WHEN ? = 'pending' THEN NULL ELSE claimed_at END, updated_at = ? WHERE id = ?",
+      r.status,
+      r.containerId ?? null,
+      r.mediaId ?? null,
+      r.error ?? null,
+      r.caption ?? null,
+      r.status,
       new Date().toISOString(),
       id,
     );
+  }
+
+  private async dispatch(id: string, now = new Date()) {
+    // In local mode the runner on Sam's machine publishes; the Worker only records events.
+    if (this.env.INSTAGRAM_MODE === "local") return;
+    const event = this.getEvent(id);
+    if (!event || (event.status !== "pending" && event.status !== "container")) return;
+    if (event.status === "pending" && !this.admit(event, now)) return;
+    this.setResult(id, await publishEvent(event, this.env));
+  }
+
+  // Local runner API (scripts/ig-runner.ts). The runner asks for the next publishable event, claims
+  // it, posts it and reports back. A claim expires after POSTING.claimMin so a crashed run is retried,
+  // and an event that already has a container comes back so the runner reconciles before posting.
+
+  nextPost(now = new Date()): { event: PostEvent; publishable: boolean } | null {
+    const claimCutoff = new Date(now.getTime() - POSTING.claimMin * 60_000).toISOString();
+    const rows = this.sql
+      .exec<Record<string, string | number | null>>(
+        "SELECT * FROM posts WHERE status = 'pending' OR (status IN ('claimed', 'container') AND (claimed_at IS NULL OR claimed_at < ?)) ORDER BY at",
+        claimCutoff,
+      )
+      .toArray()
+      .map(toEvent);
+    for (const e of rows) {
+      if (e.containerId) return { event: e, publishable: gate(e, now, localTime(now), this.postedSince(now), POSTING).ok };
+      if (this.admit(e, now)) return { event: e, publishable: true };
+    }
+    return null;
+  }
+
+  claimPost(id: string, now = new Date()): PostEvent | null {
+    const claimCutoff = new Date(now.getTime() - POSTING.claimMin * 60_000).toISOString();
+    const rows = this.sql
+      .exec(
+        "UPDATE posts SET status = 'claimed', claimed_at = ?, updated_at = ? WHERE id = ? AND (status = 'pending' OR (status IN ('claimed', 'container') AND (claimed_at IS NULL OR claimed_at < ?))) RETURNING id",
+        now.toISOString(),
+        now.toISOString(),
+        id,
+        claimCutoff,
+      )
+      .toArray();
+    return rows.length ? this.getEvent(id) : null;
+  }
+
+  reportPost(id: string, r: PostResult): PostEvent | null {
+    if (!this.getEvent(id)) return null;
+    this.setResult(id, r);
+    return this.getEvent(id);
+  }
+
+  postLog(limit = 100) {
+    return this.sql.exec("SELECT * FROM post_log ORDER BY id DESC LIMIT ?", limit).toArray();
   }
 
   private prune(now: Date) {
@@ -350,25 +480,12 @@ export class Monitor extends DurableObject<Env> {
   }
 
   getEvent(id: string): PostEvent | null {
-    return this.events(500).find((e) => e.id === id) ?? null;
+    const row = this.sql.exec<Record<string, string | number | null>>("SELECT * FROM posts WHERE id = ?", id).toArray()[0];
+    return row ? toEvent(row) : null;
   }
 
   events(limit = 50): PostEvent[] {
-    return this.sql
-      .exec<Record<string, string | number | null>>("SELECT * FROM posts ORDER BY at DESC LIMIT ?", limit)
-      .toArray()
-      .map((row) => ({
-        id: String(row.id),
-        direction: row.direction as DirectionId,
-        answer: row.answer as "yes" | "no",
-        at: String(row.at),
-        window: String(row.window),
-        status: String(row.status),
-        containerId: (row.container_id as string) ?? null,
-        mediaId: (row.media_id as string) ?? null,
-        error: (row.error as string) ?? null,
-        updatedAt: String(row.updated_at),
-      }));
+    return this.sql.exec<Record<string, string | number | null>>("SELECT * FROM posts ORDER BY at DESC LIMIT ?", limit).toArray().map(toEvent);
   }
 
   status(): DirectionStatus[] {
@@ -410,4 +527,30 @@ export class Monitor extends DurableObject<Env> {
     return this.status().find((s) => s.direction === direction) as DirectionStatus;
   }
 
+}
+
+function toEvent(row: Record<string, string | number | null>): PostEvent {
+  const str = (v: string | number | null) => (v === null || v === undefined ? null : String(v));
+  let extra: PostExtra | null = null;
+  try {
+    extra = row.extra ? (JSON.parse(String(row.extra)) as PostExtra) : null;
+  } catch {
+    // leave null
+  }
+  return {
+    id: String(row.id),
+    direction: row.direction as DirectionId,
+    answer: row.answer as "yes" | "no",
+    at: String(row.at),
+    window: String(row.window),
+    status: String(row.status),
+    containerId: str(row.container_id),
+    mediaId: str(row.media_id),
+    error: str(row.error),
+    updatedAt: String(row.updated_at),
+    since: str(row.since),
+    caption: str(row.caption),
+    claimedAt: str(row.claimed_at),
+    extra,
+  };
 }

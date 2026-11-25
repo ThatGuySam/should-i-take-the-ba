@@ -1,5 +1,4 @@
-import { cardLines } from "./card";
-import { DIRECTIONS } from "./config";
+import { buildFacts } from "./core/caption";
 import type { PostEvent } from "./monitor";
 
 export type Env = {
@@ -18,21 +17,9 @@ export type Env = {
   VAPID_PRIVATE_KEY?: string;
 };
 
-export type PublishUpdate = { status: string; containerId?: string; mediaId?: string; error?: string };
+export type PublishUpdate = { status: string; containerId?: string; mediaId?: string; error?: string; caption?: string };
 
 const GRAPH = "https://graph.instagram.com/v27.0";
-
-export function caption(event: Pick<PostEvent, "answer" | "direction" | "at">): string {
-  const [route, traffic, when] = cardLines({ ...event, answer: event.answer });
-  const lead =
-    event.answer === "no"
-      ? `No. Traffic is backing up on the BA ${DIRECTIONS[event.direction].label.toLowerCase()}.`
-      : "Yes. The BA has cleared up.";
-  return [lead, "", route, traffic, when, "", "Live answer: shoulditaketheba.com"].join("\n");
-}
-
-export const altText = (event: Pick<PostEvent, "answer" | "direction" | "at">) =>
-  `Should I take the BA? ${event.answer === "yes" ? "Yes" : "No"}. ${cardLines({ ...event }).join(". ")}. Map of the Broken Arrow Expressway from downtown Tulsa to Broken Arrow.`;
 
 async function graph(path: string, params: Record<string, string>, token: string, method = "POST") {
   const url = new URL(`${GRAPH}/${path}`);
@@ -48,8 +35,13 @@ async function graph(path: string, params: Record<string, string>, token: string
   return body;
 }
 
+/**
+ * Worker-side publisher for INSTAGRAM_MODE "live" (template caption). "dry-run" records what would
+ * have posted. "local" never reaches here: the runner on Sam's machine publishes (scripts/ig-runner.ts).
+ */
 export async function publishEvent(event: PostEvent, env: Env): Promise<PublishUpdate> {
-  if (env.INSTAGRAM_MODE !== "live") return { status: "dry-run" };
+  const facts = buildFacts(event, env.PUBLIC_ORIGIN);
+  if (env.INSTAGRAM_MODE !== "live") return { status: "dry-run", caption: facts.templateCaption };
   if (!env.INSTAGRAM_USER_ID || !env.INSTAGRAM_ACCESS_TOKEN) {
     return { status: "held", error: "INSTAGRAM_MODE is live but the account ID or token is missing" };
   }
@@ -59,7 +51,7 @@ export async function publishEvent(event: PostEvent, env: Env): Promise<PublishU
     if (!containerId) {
       const created = await graph(
         `${env.INSTAGRAM_USER_ID}/media`,
-        { image_url: `${env.PUBLIC_ORIGIN}/cards/e/${event.id}.jpg`, caption: caption(event), alt_text: altText(event) },
+        { image_url: facts.imageUrl, caption: facts.templateCaption, alt_text: facts.altText },
         token,
       );
       containerId = String(created.id);
@@ -73,7 +65,7 @@ export async function publishEvent(event: PostEvent, env: Env): Promise<PublishU
       await new Promise((r) => setTimeout(r, 10_000));
     }
     const published = await graph(`${env.INSTAGRAM_USER_ID}/media_publish`, { creation_id: containerId }, token);
-    return { status: "published", containerId, mediaId: String(published.id) };
+    return { status: "published", containerId, mediaId: String(published.id), caption: facts.templateCaption };
   } catch (error) {
     return { status: containerId ? "held" : "failed", containerId, error: String(error) };
   }

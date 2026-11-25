@@ -1,7 +1,8 @@
 import { type CardInput, renderCard } from "./card";
 import type { DirectionId } from "./config";
+import { buildFacts } from "./core/caption";
 import type { Env } from "./instagram";
-import { caption } from "./instagram";
+import { RESULT_STATUSES } from "./monitor";
 import { homePage } from "./home";
 import { parseSubscription } from "./push";
 import { aboutPage, llmsTxt, markdownStatus } from "./pages";
@@ -39,7 +40,7 @@ async function cardForEvent(id: string, env: Env): Promise<Response> {
   const key = `events/${id}.jpg`;
   const stored = await env.CARDS.get(key);
   if (stored) return new Response(stored.body, { headers: { "content-type": "image/jpeg", "cache-control": "public, max-age=31536000, immutable" } });
-  const event = (await monitor(env).events(500)).find((e) => e.id === id);
+  const event = await monitor(env).getEvent(id);
   if (!event) return new Response("Not found", { status: 404 });
   const rendered = await renderCard(
     { answer: event.answer, direction: event.direction, at: event.at },
@@ -91,7 +92,17 @@ export default {
         return json({ ok: true, ...(await monitor(env).addWatch(target, direction, minutes)) }, 0, true);
       }
       case "/api/v1/events":
-        return json({ events: (await monitor(env).events(50)).map((e) => ({ ...e, caption: caption(e) })) }, 60, true);
+        return json(
+          {
+            events: (await monitor(env).events(50)).map(({ extra, claimedAt, ...e }) => ({
+              ...e,
+              caption: e.caption ?? buildFacts({ ...e, extra }, origin).templateCaption,
+              captionPosted: e.caption !== null,
+            })),
+          },
+          60,
+          true,
+        );
       case "/index.md": {
         const { all } = await publicStatuses(env, null);
         return text(markdownStatus(all, origin), "text/markdown", 30);
@@ -129,18 +140,49 @@ export default {
     const eventCard = url.pathname.match(/^\/cards\/e\/([\w-]+)\.jpg$/);
     if (eventCard) return cardForEvent(eventCard[1], env);
 
-    if (url.pathname === "/admin/poll" && request.method === "POST") {
-      if (!env.ADMIN_TOKEN || request.headers.get("authorization") !== `Bearer ${env.ADMIN_TOKEN}`) {
-        return new Response("Unauthorized", { status: 401 });
+    const authorized = !!env.ADMIN_TOKEN && request.headers.get("authorization") === `Bearer ${env.ADMIN_TOKEN}`;
+
+    // Local Instagram runner (scripts/ig-runner.ts, docs/instagram-posting.md).
+    if (url.pathname.startsWith("/admin/posts")) {
+      if (!authorized) return new Response("Unauthorized", { status: 401 });
+      if (url.pathname === "/admin/posts/next" && request.method === "GET") {
+        const next = await monitor(env).nextPost();
+        const mode = env.INSTAGRAM_MODE ?? "dry-run";
+        if (!next) return json({ mode, event: null }, 0);
+        return json({ mode, publishable: next.publishable, event: buildFacts(next.event, origin) }, 0);
       }
+      if (url.pathname === "/admin/posts/log" && request.method === "GET") return json({ log: await monitor(env).postLog() }, 0);
+      const m = url.pathname.match(/^\/admin\/posts\/([\w-]+)\/(claim|result)$/);
+      if (m && request.method === "POST") {
+        if (m[2] === "claim") {
+          const event = await monitor(env).claimPost(m[1]);
+          return event ? json({ ok: true, event: buildFacts(event, origin) }, 0) : new Response("Not claimable", { status: 409 });
+        }
+        const b = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+        const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+        if (!b || typeof b.status !== "string" || !RESULT_STATUSES.includes(b.status)) {
+          return new Response(`status must be one of ${RESULT_STATUSES.join(", ")}`, { status: 400 });
+        }
+        const event = await monitor(env).reportPost(m[1], {
+          status: b.status,
+          containerId: str(b.containerId),
+          mediaId: str(b.mediaId),
+          error: str(b.error)?.slice(0, 500),
+          caption: str(b.caption)?.slice(0, 2200),
+        });
+        return event ? json({ ok: true, event }, 0) : new Response("Not found", { status: 404 });
+      }
+      return new Response("Not found", { status: 404 });
+    }
+
+    if (url.pathname === "/admin/poll" && request.method === "POST") {
+      if (!authorized) return new Response("Unauthorized", { status: 401 });
       const direction = url.searchParams.get("direction") === "westbound" ? "westbound" : "eastbound";
       return json(await monitor(env).pollNow(direction), 0);
     }
 
     if (url.pathname === "/admin/history" && request.method === "GET") {
-      if (!env.ADMIN_TOKEN || request.headers.get("authorization") !== `Bearer ${env.ADMIN_TOKEN}`) {
-        return new Response("Unauthorized", { status: 401 });
-      }
+      if (!authorized) return new Response("Unauthorized", { status: 401 });
       const days = Math.min(400, Math.max(1, Number(url.searchParams.get("days")) || 14));
       return json(await monitor(env).historyReport(days), 0);
     }

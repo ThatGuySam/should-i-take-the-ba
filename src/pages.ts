@@ -57,7 +57,7 @@ export function aboutPage(origin: string, events: PostEvent[]) {
 <li><strong>When it checks:</strong> every 5 minutes on weekdays from 6:30 to 9:30 AM westbound and 3:30 to 6:30 PM eastbound, and for as long as a backup lasts. Otherwise every 30 minutes, and hourly overnight.</li>
 <li><strong>No:</strong> the trip takes at least 20% and 2 minutes longer than without traffic, on two checks in a row.</li>
 <li><strong>Back to Yes:</strong> the delay drops under 10% (or under 90 seconds) on three checks in a row, about 10 minutes.</li>
-<li><strong>Instagram:</strong> during a rush window the account posts No when a backup starts and Yes when it clears. A quiet rush posts nothing.</li>
+<li><strong>Instagram:</strong> during a rush window the account posts No when a backup starts and Yes once it has stayed clear for 20 minutes or the rush window ends. At most one of each per rush. A quiet rush posts nothing.</li>
 </ul>
 <h2>Recent answer changes</h2>
 ${rows ? `<table><thead><tr><th>When</th><th>Answer</th><th>Direction</th><th>Post</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="muted">No answer changes recorded yet.</p>`}
