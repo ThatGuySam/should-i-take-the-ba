@@ -3,7 +3,7 @@
 A live yes or no on whether to drive the Broken Arrow Expressway (OK-51) between downtown
 Tulsa and Broken Arrow. It runs as one Cloudflare Worker.
 
-Prototype: https://should-i-take-the-ba.samcarlton.workers.dev
+Live: https://shoulditaketheba.com (preview: https://beta.shoulditaketheba.com)
 
 ## How it works
 

@@ -5,7 +5,11 @@
   "compatibility_date": "2026-11-20",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
-  "routes": [{ "pattern": "beta.shoulditaketheba.com", "custom_domain": true }],
+  "routes": [
+    { "pattern": "shoulditaketheba.com/*", "zone_name": "shoulditaketheba.com" },
+    { "pattern": "www.shoulditaketheba.com/*", "zone_name": "shoulditaketheba.com" },
+    { "pattern": "beta.shoulditaketheba.com", "custom_domain": true }
+  ],
   "assets": { "directory": "public", "binding": "ASSETS", "run_worker_first": false },
   "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
   "durable_objects": { "bindings": [{ "name": "MONITOR", "class_name": "Monitor" }] },
@@ -15,7 +19,7 @@
   "triggers": { "crons": ["*/5 * * * *"] },
   "observability": { "enabled": true },
   "vars": {
-    "PUBLIC_ORIGIN": "https://beta.shoulditaketheba.com",
+    "PUBLIC_ORIGIN": "https://shoulditaketheba.com",
     "TRAFFIC_PROVIDER": "google-routes",
     "INSTAGRAM_MODE": "dry-run"
   }

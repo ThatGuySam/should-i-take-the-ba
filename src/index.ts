@@ -194,9 +194,11 @@ const PRODUCTION_HOST = "shoulditaketheba.com";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const host = new URL(request.url).hostname;
+    const url = new URL(request.url);
+    const host = url.hostname;
     if (host === PRODUCTION_HOST) return handle(request, env);
-    if (new URL(request.url).pathname === "/robots.txt") return text("User-agent: *\nDisallow: /\n", "text/plain");
+    if (host === `www.${PRODUCTION_HOST}`) return Response.redirect(`https://${PRODUCTION_HOST}${url.pathname}${url.search}`, 301);
+    if (url.pathname === "/robots.txt") return text("User-agent: *\nDisallow: /\n", "text/plain");
     const res = await handle(request, env);
     const out = new Response(res.body, res);
     out.headers.set("x-robots-tag", "noindex");

@@ -2,8 +2,7 @@
 
 This file is the source of truth for anything Muse does for the Should I take the BA?
 Instagram account. Sam edits it in the `should-i-take-the-ba` repo. The live copy is served at
-`https://should-i-take-the-ba.samcarlton.workers.dev/prompts/muse.md` (the domain will change
-to shoulditaketheba.com at cutover). If this file and an older chat instruction disagree,
+`https://shoulditaketheba.com/prompts/muse.md`. If this file and an older chat instruction disagree,
 follow this file.
 
 ## How posting normally works

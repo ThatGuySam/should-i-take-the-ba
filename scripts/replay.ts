@@ -17,7 +17,7 @@ const arg = (name: string, fallback: string) => {
 const days = Number(arg("days", "28"));
 const holdout = Number(arg("holdout", "0"));
 const out = arg("out", "");
-const origin = arg("origin", "https://should-i-take-the-ba.samcarlton.workers.dev");
+const origin = arg("origin", "https://shoulditaketheba.com");
 const token =
   process.env.ADMIN_TOKEN ??
   readFileSync(new URL("../.dev.vars", import.meta.url), "utf8").match(/^ADMIN_TOKEN=["']?([^"'\n]+)/m)?.[1];

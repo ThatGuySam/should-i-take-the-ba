@@ -21,7 +21,7 @@ const IG_FILE = join(DIR, "instagram.json");
 const PAUSE_FILE = join(DIR, "PAUSED");
 const GRAPH = "https://graph.instagram.com/v27.0";
 const CLAUDE_TIMEOUT_MS = 60_000;
-const origin = arg("origin", process.env.BA_ORIGIN ?? "https://should-i-take-the-ba.samcarlton.workers.dev");
+const origin = arg("origin", process.env.BA_ORIGIN ?? "https://shoulditaketheba.com");
 const adminToken =
   process.env.ADMIN_TOKEN ??
   (existsSync(join(ROOT, ".dev.vars")) ? readFileSync(join(ROOT, ".dev.vars"), "utf8").match(/^ADMIN_TOKEN=["']?([^"'\n]+)/m)?.[1] : undefined);
