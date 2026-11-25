@@ -72,6 +72,13 @@ a{color:inherit}
 .toggle small{display:block;font-size:.72rem;font-weight:600;opacity:.85}
 .toggle a[aria-current="true"]{color:var(--bg)}
 .toggle .thumb{position:absolute;z-index:0;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);border-radius:999px;background:#fff;transform:translateX(calc(100% * var(--i,0)))}
+.toggle{cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+/* Phones: the switch is the main control, so it sits in thumb reach at the bottom. */
+@media (max-width:40rem){
+ .toggle{position:fixed;z-index:5;left:50%;bottom:max(1rem,calc(env(safe-area-inset-bottom) + .5rem));translate:-50% 0;box-shadow:0 6px 24px rgb(0 0 0 / .28);background:color-mix(in srgb,var(--meta) 55%,var(--bg))}
+ .toggle a{min-width:9rem;padding:.65rem 1rem}
+ .hero{padding-bottom:calc(6.5rem + env(safe-area-inset-bottom))}
+}
 .answer{margin:auto 0;padding:clamp(1.5rem,8vh,5rem) 0 clamp(10rem,34vh,20rem);width:100%;max-width:56rem}
 .q{margin:0 0 .25rem;font-size:clamp(1rem,2.6vw,1.35rem);font-weight:700;opacity:.92}
 .word{font-size:clamp(4.5rem,min(22vw,24vh),14rem);font-weight:800;line-height:.95;letter-spacing:-.03em;margin:0;padding-bottom:.08em}
@@ -158,12 +165,13 @@ function paint(v,animate){
  const apply=()=>{word.textContent=t.word;word.toggleAttribute('data-long',t.word.length>3);sent.textContent=v.sentence;jams.textContent=jamText(v);meta.textContent=status(v);word.classList.remove('out');sent.classList.remove('out')};
  if(animate&&!matchMedia('(prefers-reduced-motion: reduce)').matches){word.classList.add('out');sent.classList.add('out');setTimeout(apply,160)}else apply();
 }
-document.querySelectorAll('.toggle a').forEach(a=>a.addEventListener('click',e=>{
- e.preventDefault();const to=a.dataset.to;if(to===current)return;current=to;
+// Tapping anywhere on the switch flips to the other direction, not only the other half.
+$('.toggle').addEventListener('click',e=>{
+ e.preventDefault();const to=current==='eastbound'?'westbound':'eastbound';current=to;
  try{localStorage.setItem('ba:dir:'+half(),to)}catch{}
  saved.hidden=true;
  history.replaceState(null,'','?direction='+to);paint(data[to],true);
-}));
+});
 // Tell me when it clears: one push on the next confirmed No to Yes for this direction.
 const VAPID=document.querySelector('meta[name=vapid]').content,watchEl=$('.watch');
 const ios=/iPhone|iPad|iPod/.test(navigator.userAgent),standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone;
