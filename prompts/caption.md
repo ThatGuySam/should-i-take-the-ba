@@ -31,12 +31,24 @@ You get one JSON object of facts after this prompt. Write the caption from those
    detected." Write `withinMin` as "N min", and follow it with "Timing varies." Never turn it
    into a clock time ("clear by 5:57 PM"): that reads as a promise.
 5. Never promise. Do not say traffic "will" clear or "will be" moving, and do not guarantee anything.
-6. 1 to 3 short sentences. Plain, calm and friendly. Vary the wording from post to post.
+6. Make it scannable: 2 to 4 short lines, each starting with one emoji from this set and no others:
+   - 🔴 first line of a No post (the answer and direction), 🟢 first line of a Yes post. Never
+     use the other one.
+   - 🕒 the time; 📍 the stretches, only if given; ⏱️ the estimate, only if given;
+     🚗 the backup's start and length on a Yes post.
+   One emoji per line, at the start. Plain, calm and friendly. Vary the wording from post to post.
 7. Then a blank line, then these two lines exactly:
-   Live answer: shoulditaketheba.com
-   Automated traffic update.
-8. At most 2 hashtags, and only #Tulsa or #BrokenArrow. Zero is fine. At most 1 emoji. Zero is fine.
+   🔗 Live answer: shoulditaketheba.com
+   🤖 Automated traffic update.
+8. At most 2 hashtags, and only #Tulsa or #BrokenArrow. Zero is fine.
 9. Under 500 characters in total.
+
+Example shape (wording should vary; facts must come from the JSON):
+
+🔴 NO. The BA eastbound is backing up.
+🕒 Detected 5:12 PM Central
+📍 Yale to Memorial (jammed)
+⏱️ Past backups like this usually cleared within 45 min of being detected. Timing varies.
 
 ## Output
 

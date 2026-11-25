@@ -52,7 +52,11 @@ export type PostFacts = {
   caption: string | null;
 };
 
-export const REQUIRED_LINES = ["Live answer: shoulditaketheba.com", "Automated traffic update."];
+export const REQUIRED_LINES = ["🔗 Live answer: shoulditaketheba.com", "🤖 Automated traffic update."];
+/** Line-leading emoji so a caption scans at a glance. The status emoji must lead the first line. */
+export const EMOJI = { no: "🔴", yes: "🟢", time: "🕒", where: "📍", estimate: "⏱️", jam: "🚗", link: "🔗", bot: "🤖" } as const;
+const ALLOWED_EMOJI = new Set(Object.values(EMOJI).map((e) => e.replace(/\uFE0F/g, "")));
+const MAX_EMOJI = 8;
 export const MAX_CAPTION = 600;
 
 const fmt = (iso: string, opts: Intl.DateTimeFormatOptions) =>
@@ -87,16 +91,20 @@ export function buildFacts(e: FactsInput, origin: string): PostFacts {
 }
 
 export function templateCaption(f: Omit<PostFacts, "templateCaption" | "altText">): string {
-  const route = `the BA ${f.directionLabel.toLowerCase()} (${f.from} to ${f.to})`;
+  const dir = `${f.directionLabel} (${f.from} to ${f.to})`;
+  const where = f.stretches?.length ? `${EMOJI.where} ${f.stretches.join(", ")}` : "";
   const lines =
     f.answer === "no"
       ? [
-          `No. Traffic is backing up on ${route} as of ${f.detectedAt} Central.`,
-          f.estimate ? `On past weekdays, backups like this usually cleared within ${f.estimate.withinMin} min of being detected. Timing varies.` : "",
+          `${EMOJI.no} NO. The BA ${dir} is backing up.`,
+          `${EMOJI.time} Detected ${f.detectedAt} Central`,
+          where,
+          f.estimate ? `${EMOJI.estimate} Past backups like this usually cleared within ${f.estimate.withinMin} min of being detected. Timing varies.` : "",
         ]
       : [
-          `Yes. ${route[0].toUpperCase()}${route.slice(1)} is moving again as of ${f.detectedAt} Central.`,
-          f.noDetectedAt ? `The backup was first reported at ${f.noDetectedAt}.` : "",
+          `${EMOJI.yes} YES. The BA ${dir} is moving again.`,
+          `${EMOJI.time} Clear as of ${f.detectedAt} Central`,
+          f.noDetectedAt ? `${EMOJI.jam} The backup was first reported at ${f.noDetectedAt}.` : "",
         ];
   return [...lines.filter(Boolean), "", ...REQUIRED_LINES].join("\n");
 }
@@ -132,7 +140,12 @@ export function validateCaption(text: string, f: PostFacts): string[] {
   for (const m of text.matchAll(MINUTES)) if (!mins.has(Number(m[1]))) problems.push(`duration ${m[0]} not in facts`);
   for (const m of text.matchAll(HOURS)) if (!mins.has(Number(m[1]) * 60)) problems.push(`duration ${m[0]} not in facts`);
   if ((text.match(/#\w+/g) ?? []).length > 2) problems.push("more than 2 hashtags");
-  if ((text.match(/\p{Extended_Pictographic}/gu) ?? []).length > 2) problems.push("more than 2 emoji");
+  const emoji = text.match(/\p{Extended_Pictographic}/gu) ?? [];
+  if (emoji.length > MAX_EMOJI) problems.push(`more than ${MAX_EMOJI} emoji`);
+  for (const e of new Set(emoji)) if (!ALLOWED_EMOJI.has(e)) problems.push(`emoji ${e} not in the approved set`);
+  const status = EMOJI[f.answer], other = EMOJI[f.answer === "no" ? "yes" : "no"];
+  if (!text.trimStart().startsWith(status)) problems.push(`first line must start with ${status}`);
+  if (text.includes(other)) problems.push(`contains the opposite status emoji ${other}`);
   if (/\b(guarantee|promise)|\bwill (?:be )?(?:clear|moving|gone)/i.test(text)) problems.push("makes a promise");
   if (!f.estimate && /\b(usually|typically)\b/i.test(text)) problems.push("gives an estimate without one in the facts");
   if (f.estimate && /\b(usually|typically)\b/i.test(text) && !/timing varies/i.test(text)) problems.push('estimate without "Timing varies."');

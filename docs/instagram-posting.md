@@ -65,7 +65,7 @@ Each run:
    timeout, no tools.
 6. Validates the draft (`validateCaption`): under 600 characters; contains the detected time; every
    `H:MM`, bare "7 PM", "N min" and "N hours" comes from the facts; both fixed lines present; at most 2
-   hashtags and 2 emoji; no promises; no "usually"/"typically" without an estimate. If the draft fails,
+   hashtags; line-leading emoji from a fixed set (🔴 No / 🟢 Yes first, then 🕒 📍 ⏱️ 🚗, footer 🔗 🤖), at most 8, never the opposite status emoji; no promises; no "usually"/"typically" without an estimate. If the draft fails,
    or Claude errors or times out, the template caption is used.
 7. Checks that the card URL returns a JPEG, then posts with the Graph API (graph.instagram.com:
    container, status, publish) using `image_url` = `/cards/e/<id>.jpg`.

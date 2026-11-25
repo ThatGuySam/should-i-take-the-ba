@@ -31,7 +31,7 @@ const yesEvent: FactsInput = {
 
 const no = buildFacts(noEvent, ORIGIN);
 const yes = buildFacts(yesEvent, ORIGIN);
-const tail = "\n\nLive answer: shoulditaketheba.com\nAutomated traffic update.";
+const tail = "\n\n🔗 Live answer: shoulditaketheba.com\n🤖 Automated traffic update.";
 
 describe("facts", () => {
   test("No facts", () => {
@@ -68,11 +68,11 @@ describe("caption validator", () => {
     expect(p2).toContain("adds a cause or route advice");
   });
   test("accepts a caption built from the facts", () => {
-    const text = `No. The BA eastbound started backing up at 5:12 PM. Past jams usually cleared within 45 min of being detected. Timing varies.${tail}`;
+    const text = `🔴 No. The BA eastbound started backing up at 5:12 PM. Past jams usually cleared within 45 min of being detected. Timing varies.${tail}`;
     expect(validateCaption(text, no)).toEqual([]);
   });
   test("accepts hours equal to a fact and Yes jam length", () => {
-    const text = `Yes. Moving again as of 6:02 PM after a 30 min backup that started at 5:12 PM.${tail}`;
+    const text = `🟢 Yes. Moving again as of 6:02 PM after a 30 min backup that started at 5:12 PM.${tail}`;
     expect(validateCaption(text, yes)).toEqual([]);
   });
   test("rejects invented times and durations", () => {
@@ -88,13 +88,15 @@ describe("caption validator", () => {
   test("requires the detected time and fixed lines", () => {
     const problems = validateCaption("No. The BA is backed up.", no);
     expect(problems).toContain("missing detected time 5:12 PM");
-    expect(problems).toContain('missing line "Live answer: shoulditaketheba.com"');
-    expect(problems).toContain('missing line "Automated traffic update."');
+    expect(problems).toContain('missing line "🔗 Live answer: shoulditaketheba.com"');
+    expect(problems).toContain('missing line "🤖 Automated traffic update."');
   });
   test("rejects long captions, hashtag spam, emoji walls and promises", () => {
     expect(validateCaption(`No at 5:12 PM. ${"x".repeat(600)}${tail}`, no)[0]).toMatch(/too long/);
     expect(validateCaption(`No at 5:12 PM. #a #b #c${tail}`, no)).toContain("more than 2 hashtags");
-    expect(validateCaption(`No at 5:12 PM. 🚗🚗🚗${tail}`, no)).toContain("more than 2 emoji");
+    expect(validateCaption(`🔴 No at 5:12 PM. 🚗🚗🚗🚗🚗🚗🚗${tail}`, no)).toContain("more than 8 emoji");
+    expect(validateCaption(`🔴 No at 5:12 PM. 😱${tail}`, no)).toContain("emoji 😱 not in the approved set");
+    expect(validateCaption(`No at 5:12 PM. 🟢${tail}`, no)).toEqual(expect.arrayContaining(["first line must start with 🔴", "contains the opposite status emoji 🟢"]));
     expect(validateCaption(`No at 5:12 PM. It will clear soon.${tail}`, no)).toContain("makes a promise");
   });
   test("no estimate in the facts means no 'usually'", () => {
